@@ -1,4 +1,6 @@
 {
-  "spo2_min_threshold": 90,
-  "heart_rate_max_threshold": 100
+  "environment": "development",
+  "host": "127.0.0.1",
+  "port": 8080,
+  "target_url": "http://127.0.0"
 }
