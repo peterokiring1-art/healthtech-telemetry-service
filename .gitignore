@@ -1,0 +1,11 @@
+# Python environment files
+venv/
+.venv/
+env/
+
+# Python compiled bytecode cache files
+**/__pycache__/
+*.py[cod]
+
+# Local editor preferences
+.vscode/
