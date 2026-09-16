@@ -4,17 +4,14 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import List, Optional
 
-# Custom exception to flag unparseable lines safely
 class CorruptedDataError(Exception):
     pass
 
-# Base Telemetry Data Model
 class TelemetryReading:
     def __init__(self, timestamp: str, patient_id: str):
         self.timestamp: datetime = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         self.patient_id: str = patient_id
 
-# Inherited Pulse Oximetry Model
 class PulseOximeterReading(TelemetryReading):
     def __init__(self, timestamp: str, patient_id: str, spo2: Optional[int], heart_rate: Optional[int]):
         super().__init__(timestamp, patient_id)
@@ -24,7 +21,14 @@ class PulseOximeterReading(TelemetryReading):
     def __repr__(self):
         return f"<PulseOx {self.patient_id} | SpO2: {self.spo2}% | HR: {self.heart_rate} bpm>"
 
-# Inherited ECG Model 
+    def has_clinical_alert(self) -> bool:
+        """Returns True if SpO2 drops below 90% or Heart Rate exceeds 100 bpm"""
+        if self.spo2 is not None and self.spo2 < 90:
+            return True
+        if self.heart_rate is not None and self.heart_rate > 100:
+            return True
+        return False
+
 class EcgMonitorReading(TelemetryReading):
     def __init__(self, timestamp: str, patient_id: str, lead_ii_mv: Optional[float], status: str):
         super().__init__(timestamp, patient_id)
@@ -35,13 +39,11 @@ class EcgMonitorReading(TelemetryReading):
         voltage = f"{self.lead_ii_mv} mV" if self.lead_ii_mv is not None else "N/A"
         return f"<ECG {self.patient_id} | Signal: {voltage} | Status: {self.status}>"
 
-# Base Abstract Parser Class
 class BaseDeviceParser(ABC):
     @abstractmethod
     def parse_file(self, file_path: str) -> List[TelemetryReading]:
         pass
 
-# Concrete JSON Telemetry Parser Implementation
 class JsonTelemetryParser(BaseDeviceParser):
     def parse_file(self, file_path: str) -> List[PulseOximeterReading]:
         readings = []
@@ -51,20 +53,16 @@ class JsonTelemetryParser(BaseDeviceParser):
                 try:
                     if "timestamp" not in record or "patient_id" not in record:
                         raise CorruptedDataError("Missing foundational identity flags.")
-                    
                     spo2_raw = record.get("spo2")
                     spo2 = int(spo2_raw) if isinstance(spo2_raw, int) or (isinstance(spo2_raw, str) and spo2_raw.isdigit()) else None
-                    
                     hr_raw = record.get("heart_rate")
                     hr = int(hr_raw) if isinstance(hr_raw, int) or (isinstance(hr_raw, str) and hr_raw.isdigit()) else None
-                    
                     readings.append(PulseOximeterReading(record["timestamp"], record["patient_id"], spo2, hr))
                 except Exception as e:
                     print(f"[LOG WARNING] Skipping corrupted JSON record due to: {e}")
                     continue
         return readings
 
-# Concrete CSV Telemetry Parser Implementation
 class CsvTelemetryParser(BaseDeviceParser):
     def parse_file(self, file_path: str) -> List[EcgMonitorReading]:
         readings = []
@@ -75,10 +73,8 @@ class CsvTelemetryParser(BaseDeviceParser):
                     cleaned_row = {k.strip(): v.strip() for k, v in row.items() if k is not None}
                     if "timestamp" not in cleaned_row or "patient_id" not in cleaned_row:
                         raise CorruptedDataError("CSV row lacks foundational headers.")
-                    
                     raw_mv = cleaned_row.get("lead_ii_mv")
                     lead_ii_mv = float(raw_mv) if raw_mv else None
-                    
                     readings.append(EcgMonitorReading(
                         timestamp=cleaned_row["timestamp"],
                         patient_id=cleaned_row["patient_id"],
@@ -90,23 +86,31 @@ class CsvTelemetryParser(BaseDeviceParser):
                     continue
         return readings
 
-# Unified Local Live Integration Test Block
 if __name__ == "__main__":
     print("=== Ingestion Engine Pipeline Active ===")
-    
     try:
         json_engine = JsonTelemetryParser()
         csv_engine = CsvTelemetryParser()
         
         print("\n--- Testing JSON Data Pipeline ---")
         ox_data = json_engine.parse_file("pulse_oximeter.json")
-        for record in ox_data:
+        for record in ox_data: 
             print(record)
+            
+        # Practice Filtration System Target
+        print("\n🚨 CRITICAL CLINICAL ALERTS DETECTED:")
+        alert_count = 0
+        for record in ox_data:
+            if record.has_clinical_alert():
+                alert_count += 1
+                print(f"[ALERT #{alert_count}] Patient: {record.patient_id} | SpO2: {record.spo2}% | HR: {record.heart_rate} bpm")
+        if alert_count == 0:
+            print("No medical anomalies flagged in this telemetry stream.")
             
         print("\n--- Testing CSV Data Pipeline ---")
         ecg_data = csv_engine.parse_file("ecg_monitor.csv")
-        for record in ecg_data:
+        for record in ecg_data: 
             print(record)
             
     except FileNotFoundError as e:
-        print(f"\n[!] Configuration Notice: {e.filename} not found yet. Generate data files to stream results.")
+        print(f"\n[!] Configuration Notice: {e.filename} not found yet. Run data generator first.")
