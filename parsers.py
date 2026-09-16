@@ -21,11 +21,11 @@ class PulseOximeterReading(TelemetryReading):
     def __repr__(self):
         return f"<PulseOx {self.patient_id} | SpO2: {self.spo2}% | HR: {self.heart_rate} bpm>"
 
-    def has_clinical_alert(self) -> bool:
-        """Returns True if SpO2 drops below 90% or Heart Rate exceeds 100 bpm"""
-        if self.spo2 is not None and self.spo2 < 90:
+    def has_clinical_alert(self, spo2_min: int = 90, hr_max: int = 100) -> bool:
+        """Returns True if SpO2 drops below configuration or Heart Rate exceeds maximum limits"""
+        if self.spo2 is not None and self.spo2 < spo2_min:
             return True
-        if self.heart_rate is not None and self.heart_rate > 100:
+        if self.heart_rate is not None and self.heart_rate > hr_max:
             return True
         return False
 
@@ -87,7 +87,19 @@ class CsvTelemetryParser(BaseDeviceParser):
         return readings
 
 if __name__ == "__main__":
-    print("=== Ingestion Engine Pipeline Active ===")
+    print("=== Ingestion Engine Pipeline Active [Feature Branch] ===")
+    
+    # Dynamic Configuration Loading Layer
+    try:
+        with open("config.json", "r") as config_file:
+            config = json.load(config_file)
+            spo2_limit = config.get("spo2_min_threshold", 90)
+            hr_limit = config.get("heart_rate_max_threshold", 100)
+            print(f"[CONFIG LOADED] Thresholds set -> Min SpO2: {spo2_limit}% | Max HR: {hr_limit} bpm")
+    except FileNotFoundError:
+        print("[CONFIG WARNING] config.json missing. Falling back to internal engineering defaults.")
+        spo2_limit, hr_limit = 90, 100
+
     try:
         json_engine = JsonTelemetryParser()
         csv_engine = CsvTelemetryParser()
@@ -97,11 +109,11 @@ if __name__ == "__main__":
         for record in ox_data: 
             print(record)
             
-        # Practice Filtration System Target
         print("\n🚨 CRITICAL CLINICAL ALERTS DETECTED:")
         alert_count = 0
         for record in ox_data:
-            if record.has_clinical_alert():
+            # Threshold parameters are loaded dynamically from file config bounds
+            if record.has_clinical_alert(spo2_limit, hr_limit):
                 alert_count += 1
                 print(f"[ALERT #{alert_count}] Patient: {record.patient_id} | SpO2: {record.spo2}% | HR: {record.heart_rate} bpm")
         if alert_count == 0:
