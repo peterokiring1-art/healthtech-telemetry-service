@@ -1,55 +1,36 @@
-import psycopg2
+import os
+from sqlalchemy import create_engine, Column, Integer, Float, String, DateTime
+from sqlalchemy.orm import declarative_base, sessionmaker
+from datetime import datetime
 
-def create_telemetry_tables():
-    print("=== Initializing Relational Telemetry Database ===")
-    
-    try:
-        # Connect to the default PostgreSQL database instance running locally
-        connection = psycopg2.connect(
-            host="localhost",
-            database="postgres",
-            user="postgres",
-            password="postgres", # Uses your master installation password
-            port="5432"
-        )
-        
-        # Open a communication pointer cursor to run commands
-        cursor = connection.cursor()
-        
-        # 1. Create table structure for Pulse Oximeter logs
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS pulse_ox_logs (
-                id SERIAL PRIMARY KEY,
-                timestamp TIMESTAMPTZ NOT NULL,
-                patient_id VARCHAR(50) NOT NULL,
-                spo2 INT,
-                heart_rate INT
-            );
-        """)
-        
-        # 2. Create table structure for ECG Monitor logs
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ecg_logs (
-                id SERIAL PRIMARY KEY,
-                timestamp TIMESTAMPTZ NOT NULL,
-                patient_id VARCHAR(50) NOT NULL,
-                lead_ii_mv NUMERIC(5, 2),
-                status VARCHAR(50) DEFAULT 'UNKNOWN'
-            );
-        """)
-        
-        # Commit the transaction permanently to the system registry
-        connection.commit()
-        print("[SUCCESS] Relational tables 'pulse_ox_logs' and 'ecg_logs' are live.")
-        
-    except Exception as e:
-        print(f"[DATABASE ERROR] Could not initialize tables due to: {e}")
-        
-    finally:
-        if 'connection' in locals() and connection:
-            cursor.close()
-            connection.close()
-            print("[INFO] Database connection closed safely.")
+# 1. Define secure local storage string path context
+DATABASE_URL = "sqlite:///C:/Users/peter/OneDrive/Desktop/healthtech-telemetry-service/telemetry_storage.db"
+
+# 2. Spin up the local transactional query storage database engine
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
+# 3. Create a thread-safe custom transactional database session maker
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# 4. Declarative base structure class required for tracking table mapping schemas
+Base = declarative_base()
+
+# 5. Define explicit clinical relational database table schema layout
+class PatientTelemetryModel(Base):
+    __tablename__ = "patient_telemetry_logs"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    patient_id = Column(String(50), index=True, nullable=False)
+    spo2 = Column(Float, nullable=True)
+    heart_rate = Column(Float, nullable=True)
+    raw_timestamp = Column(Float, nullable=False)
+    recorded_at = Column(DateTime, default=datetime.utcnow)
+
+# 6. Database Table Initialization Handler
+def initialize_database_tables():
+    print("🔩 Initializing secure local relational database storage schema layer...")
+    Base.metadata.create_all(bind=engine)
+    print("✅ System successfully compiled 'patient_telemetry_logs' inside telemetry_storage.db!")
 
 if __name__ == "__main__":
-    create_telemetry_tables()
+    initialize_database_tables()
