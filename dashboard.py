@@ -1,91 +1,79 @@
-import streamlit as st
-import psycopg2
+import streamlit as pd_stream
 import pandas as pd
-import plotly.express as px
 import time
+from optimize_db import TunedSessionLocal
+from init_db import PatientTelemetryModel
 
-# Configure layout properties
-st.set_page_config(page_title="HealthTech Telemetry Core", layout="wide")
+# Set professional medical portal page layout
+pd_stream.set_page_config(
+    page_title="HealthTech Clinical Telemetry Center",
+    page_icon="🏥",
+    layout="wide"
+)
 
-def get_db_connection():
-    return psycopg2.connect(
-        dbname="postgres",
-        user="postgres",
-        password="postgres",
-        host="127.0.0.1",
-        port="5432"
-    )
+pd_stream.title("🏥 Central Clinical Device Telemetry Monitoring Center")
+pd_stream.markdown("Real-time time-series analytics and physiological anomaly tracking engine.")
 
-st.title("🩺 HealthTech Real-Time Telemetry Dashboard")
-st.markdown("---")
-
-# --- AUTO REFRESH SETUP ---
-if "run_count" not in st.session_state:
-    st.session_state.run_count = 0
-st.session_state.run_count += 1
-
-st.sidebar.success(f"🔄 Connected to PostgreSQL Engine")
-st.sidebar.info(f"📊 Auto-refreshing active. Poll cycle: {st.session_state.run_count}")
+# Setup background active query connection context
+db_session = TunedSessionLocal()
 
 try:
-    conn = get_db_connection()
+    # 1. Fetch distinct active patient IDs to populate our UI dropdown filter select box
+    distinct_patients = db_session.query(PatientTelemetryModel.patient_id).distinct().all()
+    patient_list = sorted([p[0] for p in distinct_patients])
     
-    # Fetch data logs using direct DBAPI2 connections
-    query_all = "SELECT patient_id, timestamp, spo2, heart_rate FROM pulse_ox_logs ORDER BY timestamp DESC;"
-    df = pd.read_sql(query_all, conn)
-    
-    query_alerts = "SELECT patient_id, timestamp, spo2, heart_rate FROM pulse_ox_logs WHERE spo2 < 90 ORDER BY timestamp DESC;"
-    df_alerts = pd.read_sql(query_alerts, conn)
-    
-    # --- SECTION 1: EMERGENCY CLINICAL ALERTS GRID ---
-    st.subheader("🚨 Critical Clinical Anomalies (SpO2 < 90%)")
-    if not df_alerts.empty:
-        for idx, row in df_alerts.iterrows():
-            st.error(
-                f"⚠️ **CRITICAL DROP** | Patient: `{row['patient_id']}` | "
-                f"SpO2: **{row['spo2']}%** | Heart Rate: **{row['heart_rate']} bpm** | "
-                f"Time: {row['timestamp']}"
-            )
+    if not patient_list:
+        pd_stream.warning("⚠️ No persistent records found inside telemetry_storage.db. Launch the simulator client!")
     else:
-        st.success("✅ Operational Normal: No active patient hypoxia anomalies flagged.")
+        # Sidebar control configuration
+        pd_stream.sidebar.header("📋 Patient Controls")
+        selected_patient = pd_stream.sidebar.selectbox("Select Active Monitored Node:", patient_list)
         
-    st.markdown("---")
-    
-    # --- SECTION 2: PATIENT HISTORICAL TREND TRACKING ---
-    st.subheader("📊 Patient Metric Historical Analytics")
-    
-    if not df.empty:
-        patient_list = df['patient_id'].unique()
-        selected_patient = st.selectbox("Select Patient Profile to Inspect:", patient_list)
+        # 2. Extract specific selected patient records directly from SQL storage into Pandas
+        query_stmt = db_session.query(PatientTelemetryModel).filter(
+            PatientTelemetryModel.patient_id == selected_patient
+        ).statement
+        df = pd.read_sql(query_stmt, db_session.bind)
         
-        df_patient = df[df['patient_id'] == selected_patient].sort_values('timestamp')
+        # Chronological chronological timeline alignment processing
+        df = df.sort_values(by="raw_timestamp")
+        df['spo2'] = df['spo2'].ffill().fillna(98.0)
+        df['heart_rate'] = df['heart_rate'].ffill().fillna(75.0)
         
-        col1, col2 = st.columns(2)
+        # Create rolling smoothed metric variables for plotting
+        df['spo2_smoothed'] = df['spo2'].rolling(window=3, min_periods=1).mean().round(1)
+        df['hr_smoothed'] = df['heart_rate'].rolling(window=3, min_periods=1).mean().round(1)
         
-        with col1:
-            st.markdown(f"### Oxygen Saturation Trend (SpO2) for {selected_patient}")
-            fig_spo2 = px.line(df_patient, x='timestamp', y='spo2', markers=True, title="SpO2 (%) over Time")
-            fig_spo2.add_hline(y=90, line_dash="dash", line_color="red", annotation_text="Hypoxia Threshold")
-            # 💡 Fix 1: Updated layout configuration parameter
-            st.plotly_chart(fig_spo2, width="stretch")
-            
-        with col2:
-            st.markdown(f"### Heart Rate Trend (HR) for {selected_patient}")
-            fig_hr = px.line(df_patient, x='timestamp', y='heart_rate', markers=True, title="Heart Rate (bpm) over Time")
-            # 💡 Fix 2: Updated layout configuration parameter
-            st.plotly_chart(fig_hr, width="stretch")
-            
-        st.markdown("### 📋 Complete Log History")
-        # 💡 Fix 3: Updated data table configuration parameter
-        st.dataframe(df_patient, width="stretch")
+        # 3. High-level clinical performance KPI metric displays
+        avg_spo2 = df['spo2'].mean().round(1)
+        avg_hr = df['heart_rate'].mean().round(1)
+        total_packets = len(df)
         
-    else:
-        st.warning("No data logs located inside the database storage.")
+        col1, col2, col3 = pd_stream.columns(3)
+        col1.metric("Avg Oxygen Saturation (SpO2)", f"{avg_spo2}%", delta=None)
+        col2.metric("Avg Heart Rate (HR)", f"{avg_hr} BPM", delta=None)
+        col3.metric("Total Transmission Heartbeats Captured", f"{total_packets} logs", delta=None)
         
-    conn.close()
+        # 4. Graphical Area Plottings using Streamlit's native charting engines
+        pd_stream.subheader("📈 Physiological Metric Trends (Smoothed vs Raw)")
+        
+        # Chart A: Heart Rate Metrics
+        hr_plot_data = df.set_index('id')[['heart_rate', 'hr_smoothed']]
+        pd_stream.markdown("**Heart Rate Track (BPM):**")
+        pd_stream.line_chart(hr_plot_data)
+        
+        # Chart B: SpO2 Metrics
+        spo2_plot_data = df.set_index('id')[['spo2', 'spo2_smoothed']]
+        pd_stream.markdown("**Oxygen Saturation Track (%):**")
+        pd_stream.line_chart(spo2_plot_data)
+        
+        # 5. Raw Data Grid Overview
+        pd_stream.subheader("🗄️ Active Session Transaction Audit Logs")
+        pd_stream.dataframe(df[['id', 'patient_id', 'spo2', 'heart_rate', 'raw_timestamp']].tail(10), use_container_width=True)
 
-except Exception as e:
-    st.error(f"❌ Failed to query database: {e}")
+finally:
+    db_session.close()
 
-time.sleep(5)
-st.rerun()
+# Add automatic auto-refresh trigger to mock web-socket updates
+time.sleep(2)
+pd_stream.rerun()
