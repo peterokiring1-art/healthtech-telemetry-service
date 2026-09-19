@@ -9,3 +9,8 @@ env/
 
 # Local editor preferences
 .vscode/
+
+# Local Phase 2 Binary Storage Additions
+telemetry_storage.db
+*.pth
+

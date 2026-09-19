@@ -1,46 +1,38 @@
-import threading
-import requests
-import random
 import time
-from datetime import datetime
+import random
+import requests
 
-# HARDCODED AND VERIFIED GATEWAY TARGET
-TARGET_URL = "http://127.0.0"
+API_URL = "http://127.0.0"
 
-def simulate_device(patient_id: str, cycles: int):
-    print(f"?? IoT Sensor Initialized for Patient: {patient_id}")
-    for i in range(cycles):
-        spo2_val = random.randint(84, 99)
-        hr_val = random.randint(65, 120)
-        payload = {
-            "patient_id": patient_id,
-            "timestamp": datetime.now().isoformat(),
-            "spo2": spo2_val,
-            "heart_rate": hr_val
-        }
-        try:
-            response = requests.post(TARGET_URL, json=payload, timeout=5)
-            if response.status_code == 200:
-                alert_flag = "?? [WARNING] Hypoxia Detected!" if spo2_val < 90 else "?? Normal"
-                print(f"[{patient_id}] Sent Packet {i+1}/{cycles} | SpO2: {spo2_val}% | HR: {hr_val} bpm | Status: {alert_flag}")
-            else:
-                print(f"? [{patient_id}] Failed with Status Code: {response.status_code}")
-        except requests.exceptions.RequestException as e:
-            print(f"?? [{patient_id}] Connection error: {e}")
-        time.sleep(random.uniform(0.5, 1.5))
-    print(f"?? Telemetry Stream Finalized for Patient: {patient_id}")
+def authenticate_client():
+    login_data = {"username": "clinician_peter", "password": "secure_password_2026"}
+    try:
+        res = requests.post(f"{API_URL}/auth/login", data=login_data)
+        return {"Authorization": f"Bearer {res.json()['access_token']}"}
+    except Exception:
+        print("❌ Auth failure. Ensure app server gateway is running on port 8080!")
+        return None
 
-def run_concurrent_simulation():
-    patients = [f"PT-CONC-{i:03d}" for i in range(1, 11)]
-    threads = []
-    print("=== Launching Multi-Patient Concurrent Simulation Pipeline ===\n")
-    for p_id in patients:
-        t = threading.Thread(target=simulate_device, args=(p_id, 3))
-        threads.append(t)
-        t.start()
-    for t in threads:
-        t.join()
-    print("\n? All concurrent clinical device transmissions complete.")
+def run_hardware_fault_simulation():
+    headers = authenticate_client()
+    if not headers: return
+    
+    print("\n🚀 Starting Live Biomedical Fault & Telemetry Ingestion Simulator...")
+    
+    # 1. Simulate Standard Functional Patient Stream Flow
+    stable_payload = {"patient_id": "PT-CONC-001", "spo2": 98.0, "heart_rate": 72.0, "timestamp": time.time()}
+    requests.post(f"{API_URL}/telemetry", json=stable_payload, headers=headers)
+    print("✅ Broadcasted Frame 1: Patient Metrics Stable.")
+    
+    # 2. Simulate Active Hardware Fault Telemetry Event Break
+    print("\n🚨 WARNING: Simulating sudden sensor displacement on Node PT-CONC-001...")
+    fault_payload = {"equipment_model": "PulseOx-Pro-2000", "fault_code": "OPTICAL_FOULING_ERR4"}
+    
+    # Hit the automated RAG Troubleshooting Notification Router Channel directly
+    rag_res = requests.post(f"{API_URL}/clinical-rag/troubleshoot-alert", json=fault_payload, headers=headers)
+    
+    print("\n📥 [AI ENGINEERING NOTIFICATION DISPATCHED OVER WORKSPACE]:")
+    print(rag_res.json()["dispatched_action_plan"])
 
 if __name__ == "__main__":
-    run_concurrent_simulation()
+    run_hardware_fault_simulation()
