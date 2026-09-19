@@ -3,19 +3,26 @@ from sqlalchemy import create_engine, Column, Integer, Float, String, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 
-# 1. Define secure local storage string path context
-DATABASE_URL = "sqlite:///C:/Users/peter/OneDrive/Desktop/healthtech-telemetry-service/telemetry_storage.db"
+# Read from environment variables (Defaulting to local if Docker variables are absent)
+POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres_secure_2026")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "healthtech_telemetry")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "127.0.0.1")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 
-# 2. Spin up the local transactional query storage database engine
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
-# 3. Create a thread-safe custom transactional database session maker
+# PostgreSQL uses explicit connection pooling parameters natively
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=20,
+    max_overflow=10,
+    pool_timeout=30
+)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# 4. Declarative base structure class required for tracking table mapping schemas
 Base = declarative_base()
 
-# 5. Define explicit clinical relational database table schema layout
 class PatientTelemetryModel(Base):
     __tablename__ = "patient_telemetry_logs"
 
@@ -26,11 +33,10 @@ class PatientTelemetryModel(Base):
     raw_timestamp = Column(Float, nullable=False)
     recorded_at = Column(DateTime, default=datetime.utcnow)
 
-# 6. Database Table Initialization Handler
 def initialize_database_tables():
-    print("🔩 Initializing secure local relational database storage schema layer...")
+    print("🔩 Connecting to PostgreSQL Cluster and creating tables...")
     Base.metadata.create_all(bind=engine)
-    print("✅ System successfully compiled 'patient_telemetry_logs' inside telemetry_storage.db!")
+    print("✅ System successfully compiled 'patient_telemetry_logs' inside PostgreSQL database!")
 
 if __name__ == "__main__":
     initialize_database_tables()

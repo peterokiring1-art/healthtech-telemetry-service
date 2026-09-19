@@ -1,20 +1,68 @@
 version: '3.8'
 
 services:
-  api_gateway:
-    build: .
+  # 1. Distributed Relational Database Cluster Container
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: production_postgres_container
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_secure_2026
+      POSTGRES_DB: healthtech_telemetry
     ports:
-      - "8080:8080"
+      - "5432:5432"
     volumes:
-      - .:/code
+      - postgres_data:/var/lib/postgresql/data
     restart: always
 
+  # 2. Event-Driven Message Broker Container
+  rabbitmq_broker:
+    image: rabbitmq:3-management-alpine
+    container_name: enterprise_rabbitmq_container
+    ports:
+      - "5672:5672"     # Core AMQP messaging traffic lane
+      - "15672:15672"   # Management Visual Console Dashboard Portal
+    restart: always
+
+  # 3. Secure Core API Ingestion Gateway Microservice
+  api_gateway:
+    build: .
+    container_name: core_api_gateway_container
+    ports:
+      - "8080:8080"
+    environment:
+      POSTGRES_HOST: postgres_db
+      RABBITMQ_HOST: rabbitmq_broker
+    depends_on:
+      - postgres_db
+      - rabbitmq_broker
+    restart: always
+
+  # 4. Standalone Asynchronous Stream Message Worker Consumer
+  async_worker_consumer:
+    build: .
+    container_name: async_worker_consumer_container
+    command: python worker_consumer.py
+    environment:
+      POSTGRES_HOST: postgres_db
+      RABBITMQ_HOST: rabbitmq_broker
+    depends_on:
+      - postgres_db
+      - rabbitmq_broker
+    restart: always
+
+  # 5. Real-Time Clinical Trend Data Analysis Dashboard
   ui_dashboard:
     build: .
+    container_name: clinical_dashboard_container
     ports:
       - "8501:8501"
-    volumes:
-      - .:/code
+    environment:
+      POSTGRES_HOST: postgres_db
     command: streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0
     depends_on:
-      - api_gateway
+      - postgres_db
+    restart: always
+
+volumes:
+  postgres_data:
