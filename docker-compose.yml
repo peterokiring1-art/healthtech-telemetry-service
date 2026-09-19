@@ -33,6 +33,9 @@ services:
     environment:
       POSTGRES_HOST: postgres_db
       RABBITMQ_HOST: rabbitmq_broker
+    volumes:
+      # 💡 FIX: Sync local persistent vector storage path to volume cluster array
+      - chroma_vector_data:/code/chroma_db_storage
     depends_on:
       - postgres_db
       - rabbitmq_broker
@@ -64,5 +67,7 @@ services:
       - postgres_db
     restart: always
 
+# Define global shared system volume clusters to prevent data loss across updates
 volumes:
   postgres_data:
+  chroma_vector_data:   # 💡 FIX: Keeps your vector manuals alive forever
