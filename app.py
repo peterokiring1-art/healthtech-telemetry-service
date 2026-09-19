@@ -1,28 +1,20 @@
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
-from routes import telemetry, analytics, auth
+from routes import telemetry, analytics, auth, vision_ml, clinical_rag
 
+# Initialize the Enterprise Telemetry Gateway Application
 app = FastAPI(
-    title="🏥 HealthTech Clinical Telemetry Platform Core Gateway",
-    description="""
-    ## Advanced Distributed Medical IoT Gateway System
-    This documentation layer exposes secure interfaces designed for hospital hardware nodes.
-    
-    ### Core Infrastructure Layout:
-    * **Authentication:** OAuth2 Signed JWT bearer tokens with native Bcrypt constraints.
-    * **Broker Framework:** Event-Driven message pipelines running via distributed **RabbitMQ**.
-    * **Storage Architecture:** High-throughput transactional data pooling running on **PostgreSQL**.
-    * **Data Engineering Analytics:** Real-time moving trend evaluations powered by **Pandas & NumPy**.
-    """,
-    version="6.0.0"
+    title="HealthTech Device Telemetry Analytics Suite",
+    version="2.0.0",
+    description="Production-grade clinical device data streaming, validation, and analytics platform."
 )
 
-# Root path automatic redirect straight to interactive Swagger docs
-@app.get("/", include_in_schema=False)
-async def redirect_to_swagger():
-    return RedirectResponse(url="/docs")
+# Register Global Phase 1, Phase 2, and Phase 3 Core Routes
+app.include_router(auth.router)          
+app.include_router(telemetry.router)     
+app.include_router(analytics.router)     
+app.include_router(vision_ml.router)     
+app.include_router(clinical_rag.router)  
 
-# Mount separate router architectures elegantly
-app.include_router(auth.router)
-app.include_router(telemetry.router)
-app.include_router(analytics.router)
+@app.get("/healthz", tags=["Infrastructure"])
+async def infrastructure_health_check():
+    return {"status": "HEALTHY", "timestamp": "2026-09-19T11:09:00Z"}

@@ -14,3 +14,7 @@ env/
 telemetry_storage.db
 *.pth
 
+
+# Local Phase 3 Persistent ChromaDB Storage
+chroma_db_storage/
+
