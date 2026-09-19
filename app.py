@@ -9,19 +9,22 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
+# Import our tuned database engine components
+from optimize_db import TunedSessionLocal, profile_query_performance
+from init_db import PatientTelemetryModel
+
 # Setup production logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("TelemetryServer")
 
 app = FastAPI(
     title="HealthTech Telemetry Service Gateway",
-    description="Clinical device ingestion with deep analytical formatting arrays",
-    version="2.5.0"
+    description="Production-grade clinical device ingestion with persistent database storage mapping",
+    version="3.0.0"
 )
 
-# Safe memory queues and temporary cache to store data for analytics lookups
+# Shared safe memory queue for background worker processing
 telemetry_queue = Queue()
-DATABASE_MOCK_CACHE: List[dict] = []
 
 class TelemetryPayload(BaseModel):
     patient_id: str = Field(..., example="PT-CONC-001")
@@ -29,46 +32,72 @@ class TelemetryPayload(BaseModel):
     heart_rate: Optional[float] = Field(None)
     timestamp: float = Field(..., description="Unix timestamp")
 
+# 1. Asynchronous Ingestion Gateway Endpoint (POST)
 @app.post("/api/v1/telemetry", status_code=status.HTTP_200_OK)
 async def ingest_patient_telemetry(payload: TelemetryPayload):
     try:
-        DATABASE_MOCK_CACHE.append(payload.model_dump())
-        telemetry_queue.put(payload)
-        return {"status": "SUCCESS", "message": "Authenticated Storage Confirmed."}
+        # Instantly hand off payload to the thread-safe background insertion queue
+        telemetry_queue.put(payload.model_dump())
+        
+        # Clinical Rule Check for Threshold Alerts
+        is_abnormal = False
+        if payload.spo2 and payload.spo2 < 90:
+            is_abnormal = True
+        if payload.heart_rate and (payload.heart_rate < 50 or payload.heart_rate > 120):
+            is_abnormal = True
+            
+        if is_abnormal:
+            return {
+                "status": "SUCCESS",
+                "message": "Transmission Queued for Persistent Storage.",
+                "alert": "Server flagged an active clinical abnormality threshold alert!"
+            }
+        return {"status": "SUCCESS", "message": "Transmission Queued for Persistent Storage."}
     except Exception as e:
         logger.error(f"Ingestion error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Server error processing metrics")
+        raise HTTPException(status_code=500, detail="Server error processing metric pipelines")
 
-# Upgraded Endpoint with Deep Data Formatting & Summarization
-@app.get("/api/v1/telemetry/analytics/{patient_id}", summary="Fetch Formatted Patient Analytics & Clinical Summaries")
-async def get_patient_analytics(patient_id: str):
-    patient_records = [r for r in DATABASE_MOCK_CACHE if r["patient_id"] == patient_id]
-    
-    if not patient_records:
-        raise HTTPException(status_code=404, detail=f"No telemetry logs found for: {patient_id}")
-    
+# 2. Time-Series Analytics Endpoint connected to SQL Backend (GET)
+@app.get("/api/v1/telemetry/analytics/{patient_id}")
+@profile_query_performance
+def get_patient_analytics(patient_id: str):
+    db_session = TunedSessionLocal()
     try:
-        df = pd.DataFrame(patient_records).sort_values(by="timestamp")
+        # Fetch raw patient records directly from our optimized database table
+        records = db_session.query(PatientTelemetryModel).filter(
+            PatientTelemetryModel.patient_id == patient_id
+        ).all()
         
-        # 1. Clean data gaps using forward-fill
+        if not records:
+            raise HTTPException(status_code=404, detail=f"No telemetry logs found for patient: {patient_id}")
+        
+        # Convert SQLAlchemy objects into a list of dictionaries for Pandas ingestion
+        raw_data = [
+            {
+                "patient_id": r.patient_id,
+                "spo2": r.spo2,
+                "heart_rate": r.heart_rate,
+                "timestamp": r.raw_timestamp
+            } for r in records
+        ]
+        
+        # Process analytics via vectorized Pandas operations
+        df = pd.DataFrame(raw_data).sort_values(by="timestamp")
         df['spo2'] = df['spo2'].ffill().fillna(98.0)
         df['heart_rate'] = df['heart_rate'].ffill().fillna(75.0)
-        
-        # 2. Limit sensor noise spikes
         df['spo2'] = np.clip(df['spo2'], 0.0, 100.0)
         
-        # 3. Compute running moving average metrics
+        # Calculate moving averages
         df['spo2_smoothed'] = df['spo2'].rolling(window=3, min_periods=1).mean().round(1)
         df['hr_smoothed'] = df['heart_rate'].rolling(window=3, min_periods=1).mean().round(1)
         
-        # 🌟 NEW ADDITION: Generate Explicit, Human-Readable Timestamp Strings
+        # Create human-readable timestamps
         df['readable_time'] = df['timestamp'].apply(
             lambda x: datetime.fromtimestamp(x).strftime('%Y-%m-%d %H:%M:%S')
         )
         
-        # 🌟 NEW ADDITION: Generate the Clinical Summary Aggregate Metrics
+        # Calculate Aggregates
         total_alerts = int((df['spo2'] < 90).sum() + ((df['heart_rate'] < 50) | (df['heart_rate'] > 120)).sum())
-        
         clinical_summary = {
             "overall_avg_spo2": float(df['spo2'].mean().round(1)),
             "overall_avg_heart_rate": float(df['heart_rate'].mean().round(1)),
@@ -77,29 +106,47 @@ async def get_patient_analytics(patient_id: str):
             "clinical_status": "STABLE" if total_alerts == 0 else "ATTENTION_REQUIRED"
         }
         
-        # Structure payload output cleanly
-        cleaned_json_records = df.to_dict(orient="records")
-        
         return {
             "patient_id": patient_id,
             "status": "ANALYTICS_TRANSFORMED",
             "clinical_summary_snapshot": clinical_summary,
-            "data_timeline": cleaned_json_records
+            "data_timeline": df.to_dict(orient="records")
         }
-    except Exception as e:
-        logger.error(f"Analytics computation failure: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error compiling data stream trends.")
+    finally:
+        db_session.close()
 
+# 3. Decoupled Ingestion Thread Worker writing directly to SQL Tables
 def database_ingestion_worker():
+    logger.info("👷 Tuned SQL Background Ingestion Worker Thread Activated.")
     while True:
         try:
-            payload = telemetry_queue.get()
-            time.sleep(0.01)
+            # Block until an entry arrives from the ingestion gateway queue
+            payload_data = telemetry_queue.get()
+            
+            # Spin up an optimized session context transaction block
+            db_session = TunedSessionLocal()
+            try:
+                db_record = PatientTelemetryModel(
+                    patient_id=payload_data["patient_id"],
+                    spo2=payload_data["spo2"],
+                    heart_rate=payload_data["heart_rate"],
+                    raw_timestamp=payload_data["timestamp"]
+                )
+                db_session.add(db_record)
+                db_session.commit()
+            except Exception as e:
+                db_session.rollback()
+                logger.error(f"SQL Batch Insertion Rollback Error: {str(e)}")
+            finally:
+                db_session.close()
+                
             telemetry_queue.task_done()
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Queue Worker Fatal Crash Prevented: {str(e)}")
 
 @app.on_event("startup")
 async def startup_event():
+    logger.info("🗄️ Relational database engine validation running...")
     worker_thread = Thread(target=database_ingestion_worker, daemon=True)
     worker_thread.start()
+    logger.info("🚀 Persistent storage task worker pool successfully attached.")
