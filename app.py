@@ -20,20 +20,21 @@ logger = logging.getLogger("TelemetryServer")
 app = FastAPI(
     title="HealthTech Telemetry Service Gateway",
     description="Production-grade clinical device ingestion with persistent database storage mapping",
-    version="3.0.0"
+    version="3.1.0"
 )
 
 # Shared safe memory queue for background worker processing
 telemetry_queue = Queue()
 
+# Upgraded Pydantic Schema Validation with modern V2 examples configuration
 class TelemetryPayload(BaseModel):
-    patient_id: str = Field(..., example="PT-CONC-001")
-    spo2: Optional[float] = Field(None)
-    heart_rate: Optional[float] = Field(None)
-    timestamp: float = Field(..., description="Unix timestamp")
+    patient_id: str = Field(..., examples=["PT-CONC-001"], description="Unique clinical tracking identifier")
+    spo2: Optional[float] = Field(None, description="Oxygen Saturation Percentage")
+    heart_rate: Optional[float] = Field(None, description="Heart Rate in Beats Per Minute")
+    timestamp: float = Field(..., description="Unix timestamp of hardware reading event")
 
 # 1. Asynchronous Ingestion Gateway Endpoint (POST)
-@app.post("/api/v1/telemetry", status_code=status.HTTP_200_OK)
+@app.post("/api/v1/telemetry", status_code=status.HTTP_200_OK, summary="Ingest Real-time Client Telemetry Stream")
 async def ingest_patient_telemetry(payload: TelemetryPayload):
     try:
         # Instantly hand off payload to the thread-safe background insertion queue
@@ -58,7 +59,7 @@ async def ingest_patient_telemetry(payload: TelemetryPayload):
         raise HTTPException(status_code=500, detail="Server error processing metric pipelines")
 
 # 2. Time-Series Analytics Endpoint connected to SQL Backend (GET)
-@app.get("/api/v1/telemetry/analytics/{patient_id}")
+@app.get("/api/v1/telemetry/analytics/{patient_id}", summary="Fetch Formatted Patient Analytics & Clinical Summaries")
 @profile_query_performance
 def get_patient_analytics(patient_id: str):
     db_session = TunedSessionLocal()
@@ -144,8 +145,9 @@ def database_ingestion_worker():
         except Exception as e:
             logger.error(f"Queue Worker Fatal Crash Prevented: {str(e)}")
 
+# FastAPI Lifecycle Events hook
 @app.on_event("startup")
-async def startup_event():
+async def startup_event:
     logger.info("🗄️ Relational database engine validation running...")
     worker_thread = Thread(target=database_ingestion_worker, daemon=True)
     worker_thread.start()
