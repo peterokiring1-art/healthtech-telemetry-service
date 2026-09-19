@@ -1,97 +1,48 @@
-# HealthTech Telemetry Service Gateway 📡 (Phase 1 Capstone)
+# HealthTech Telemetry Service Gateway 📡 (Phase 2 Enterprise Capstone)
 
-A production-ready, concurrent microservice designed to ingest real-time clinical IoT biomedical streams (e.g., Pulse Oximeter telemetry), cleanse transmission anomalies on the fly, and serve smoothed physiological trends via optimized RESTful endpoints.
-
-Built as part of an accelerated 3-week advanced backend software sprint.
+A production-grade, containerized clinical microservice framework engineered to ingest real-time biomedical time-series loops, secure transmissions using token-gated checkpoints, cleanse communication drops, and visualize smoothed tracking lines dynamically.
 
 ---
 
 ## 🏗️ System Architecture & Data Pipeline Blueprint
 
-The microservice decouples the ingestion layer from the analytics layer to ensure massive system throughput under heavy concurrent loads.
+The platform implements an enterprise decoupled routing layout to maximize throughput under heavy concurrent loads. For the complete system architecture diagram, setup instructions, and deployment assets, please check the project repository documentation.
 
-```text
-[ 10 Concurrent Patients ]
-         │ (Simultaneous IoT Hardware Transmissions)
-         ▼
- ┌───────────────┐
- │ FastAPI App   │ ──► [ Threshold Alert Guard ] ──► (Terminal Flagging)
- └───────────────┘
-         │
-         ├───► [ Fast Write Memory Cache Array ] ──► [ Pandas / NumPy Cleansing Engine ]
-         │                                                        │ (ffill + np.clip)
-         ▼                                                        ▼
- ┌───────────────┐                                     ┌──────────────────────┐
- │ Thread Queue  │ ──► [ Async Background Worker ]     │  GET /analytics UI   │
- └───────────────┘                                     └──────────────────────┘
-```
-
-1. **Ingestion Layer (POST):** Asynchronous API endpoint handles concurrent device data packets, validates constraints using Pydantic, filters instant threshold hazards, and drops payloads into a safe internal queue thread.
-2. **Analytics Engine (GET):** Reads raw, time-series metrics. Uses **Pandas** to forward-fill (`ffill`) missing transmission packets and **NumPy** to clip hardware boundary spikes, outputting a 3-period rolling moving average for clinical dashboards.
+1. **Token Protection Layer (JWT):** Gated endpoints secure ingestion pipelines by authenticating users and edge devices via signed JSON Web Tokens using native `bcrypt` algorithms.
+2. **Ingestion Core Pipeline (POST):** Asynchronous route managers capture device traffic data packets and instantly drop payloads onto thread-safe processing queues (`queue.Queue`).
+3. **Decoupled Persistence Stack:** A dedicated background worker thread manages transactions to an optimized relational SQLite file pool with composite chronological indexing.
+4. **Vectorized Analytics Engine (GET):** Pulls raw patient histories, employing Pandas forward-fill for sensor packet drops and NumPy clipping for signal noise suppression.
+5. **Interactive Operations Center UI:** A responsive data dashboard running via Streamlit that renders live KPI summary panels and trend line graphs.
 
 ---
 
-## 🚀 Technical Core Accomplishments
-* **FastAPI Concurency:** Built fully decoupled background task worker threads via `queue.Queue` to handle complex multi-device loads without slowing down the active API.
-* **Pydantic Structural Contracts:** Implemented rigorous data parsing contracts ensuring clinical integers (`spo2`, `heart_rate`) conform exactly to physical parameters.
-* **Vectorized Data Science Cleansing:** Replaced slow loop algorithms with high-performance Pandas and NumPy processing pipelines to address data gaps and sensor noise.
+## 🚀 Advanced Technical Implementations
+* **Lifespan Task Decoupling:** Uses FastAPI asynchronous `lifespan` context managers to orchestrate thread workers safely.
+* **HIPAA-Compliant JWT Shielding:** Modular authorization filters using native `bcrypt` password compilation.
+* **Population Quality Inspector:** Direct analytical testing scripts (`check_data.py`) with composite query profiling.
+* **Automated Contract Matrices:** Thorough integration testing pipeline using `PyTest` modules.
 
 ---
 
 ## ⚙️ Local Development & Deployment Guide
 
-### 1. Prerequisites & Environment Initialization
-Ensure you are using Python 3.11+ on a Windows environment. Execute the terminal startup sequence to initialize isolates and packages:
-
+### 1. Development Environment Initialization
 ```powershell
-# Navigate into the service root directory
 cd C:\Users\peter\OneDrive\Desktop\healthtech-telemetry-service
-
-# Configure PowerShell policy access and activate the environment
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 .\venv\Scripts\activate
-
-# Install essential dependencies
-pip install fastapi uvicorn pydantic pandas numpy requests
+pip install fastapi uvicorn pydantic pandas numpy requests python-jose[cryptography] passlib bcrypt streamlit pytest httpx
 ```
 
-### 2. Booting the Application Gateway Server
-Launch the asynchronous Uvicorn worker bound to your explicit local configurations:
-```powershell
-uvicorn app:app --host 127.0.0.1 --port 8080 --reload
-```
-*Verify gateway initialization via the interactive visual interface portal at:* `http://localhost:8080/docs`
-
-### 3. Launching the Multi-Patient Concurrent Simulator
-In a separate terminal tab (with the virtual environment activated), trigger the simultaneous device client script:
-```powershell
-python .\simulate_client.py
-```
-
-### 4. Fetching Real-time Transformed Data Logs
-Query the production analytics engine directly from the command line tool to parse the results:
-```powershell
-Invoke-RestMethod http://localhost:8080/api/v1/telemetry/analytics/PT-CONC-001
-```
+### 2. Launching Services & Enterprise Deployment
+* **Boot API Server:** `uvicorn app:app --host 127.0.0.1 --port 8080 --reload`
+* **Boot Dashboard:** `streamlit run dashboard.py`
+* **Run Tests:** `pytest -v .\test_app.py`
+* **Docker Deployment:** `docker compose up --build`
 
 ---
 
-## 📊 Endpoints Schema
-
-### 📤 1. Ingest Telemetry
-* **Route:** `POST /api/v1/telemetry`
-* **Payload Type:** `application/json`
-* **Sample Request:**
-```json
-{
-  "patient_id": "PT-CONC-001",
-  "spo2": 97.0,
-  "heart_rate": 72.0,
-  "timestamp": 1789712000.0
-}
-```
-
-### 📥 2. Retrieve Cleaned Analytics
-* **Route:** `GET /api/v1/telemetry/analytics/{patient_id}`
-* **Response Type:** `application/json`
-* **Status Returned:** `ANALYTICS_TRANSFORMED` (Includes missing value interpolation & smoothed moving average values).
+## 📊 Secure Endpoints Schema
+* **`POST /api/v1/auth/login`**: OAuth2PasswordRequestForm authentication endpoint returning signed bearer tokens.
+* **`POST /api/v1/telemetry`**: Token-gated telemetry data ingestion endpoint.
+* **`GET /api/v1/telemetry/analytics/{patient_id}`**: Retrieves formatted analytics timeline and clinical severity summaries.
