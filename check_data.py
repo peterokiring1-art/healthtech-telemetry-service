@@ -1,30 +1,56 @@
-import psycopg2
+import pandas as pd
+from sqlalchemy import func
+from init_db import PatientTelemetryModel
+from optimize_db import TunedSessionLocal, profile_query_performance
 
-def query_inserted_records():
-    print("=== Verification Query Tool ===")
+@profile_query_performance
+def run_clinical_database_audit():
+    print("=== Phase 1: Establishing Direct SQL Connection Pool ===")
+    db_session = TunedSessionLocal()
+    
     try:
-        connection = psycopg2.connect(
-            host="localhost", database="postgres", user="postgres", password="postgres", port="5432"
-        )
-        cursor = connection.cursor()
+        # 1. Fetch total entry metric count across the entire table
+        total_records = db_session.query(PatientTelemetryModel).count()
+        print(f"📊 Total Persistent Packets Registered in SQL Table: {total_records}")
         
-        # Pull everything out of your live PulseOx logs table ordered by insertion sequence
-        cursor.execute("SELECT id, timestamp, patient_id, spo2, heart_rate FROM pulse_ox_logs ORDER BY id ASC;")
-        records = cursor.fetchall()
+        if total_records == 0:
+            print("⚠️ The database table is currently empty. Run your simulator client first!")
+            return
+
+        # 2. Extract every single record into a Pandas DataFrame for heavy analytical slicing
+        print("\n=== Phase 2: Ingesting Raw Disk Tables into Pandas DataFrame ===")
+        query_stmt = db_session.query(PatientTelemetryModel).statement
+        df = pd.read_sql(query_stmt, db_session.bind)
         
-        print(f"\n📋 FOUND {len(records)} TOTAL ENTRIES IN 'pulse_ox_logs':")
-        for row in records:
-            # Safely unpack the precise SQL tuple entries row by row
-            row_id, timestamp, patient_id, spo2, heart_rate = row
-            spo2_text = f"{spo2}%" if spo2 is not None else "None%"
-            print(f"Row ID: {row_id} | Time: {timestamp} | Patient: {patient_id} | SpO2: {spo2_text} | HR: {heart_rate} bpm")
-            
+        print(f"Successfully vectorized {len(df)} database records.")
+
+        print("\n=== Phase 3: Cross-Patient Population Clinical Insights ===")
+        
+        # 3. Pull extreme boundary anomalies across the entire device network
+        min_spo2 = df['spo2'].min()
+        max_hr = df['heart_rate'].max()
+        mean_hr = df['heart_rate'].mean()
+        
+        print(f"🚨 Lowest SpO2 reading captured across population: {min_spo2:.1f}%")
+        print(f"❤️ Highest Heart Rate captured across population: {max_hr:.1f} BPM")
+        print(f"📈 Mean population baseline Heart Rate: {mean_hr:.1f} BPM")
+
+        print("\n=== Phase 4: Breakdown Summary Per Patient Node ===")
+        # 4. Group data by patient_id to calculate packet distributions and average metrics
+        patient_groups = df.groupby('patient_id').agg(
+            total_transmissions=('id', 'count'),
+            avg_spo2=('spo2', 'mean'),
+            avg_heart_rate=('heart_rate', 'mean')
+        ).round(1)
+        
+        print(patient_groups)
+        print("\n=======================================================")
+        
     except Exception as e:
-        print(f"Query check stalled due to error: {e}")
+        print(f"❌ Database audit failure occurred: {str(e)}")
     finally:
-        if 'connection' in locals() and connection:
-            cursor.close()
-            connection.close()
+        db_session.close()
 
 if __name__ == "__main__":
-    query_inserted_records()
+    print("📡 Launching Production-Grade Clinical Database Inspector Tool...")
+    run_clinical_database_audit()
