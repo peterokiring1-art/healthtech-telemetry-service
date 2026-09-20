@@ -4,8 +4,7 @@ import random
 import time
 from datetime import datetime
 
-# GUARANTEED HIGH-SPEED GATEWAY ROUTE
-TARGET_URL = "http://127.0.0.1:8080"
+TARGET_URL = "http://127.0.0"
 
 def simulate_device(patient_id: str, cycles: int):
     print(f"?? IoT Sensor Initialized for Patient: {patient_id}")
