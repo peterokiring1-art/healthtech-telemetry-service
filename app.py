@@ -1,153 +1,106 @@
-import asyncio
-import logging
-import json
-import sys
-import torch
-import torch.nn as nn
-from pydantic import BaseModel, Field
-from fastapi import FastAPI, BackgroundTasks, status, Header, HTTPException
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from datetime import datetime
+import psycopg2
+from typing import Optional
+import queue
+import threading
+import time
 
-# --- 1. ENTERPRISE HIPAA COMPLIANCE LOGGING SETUP ---
-class JSONAuditFormatter(logging.Formatter):
-    def format(self, record):
-        log_payload = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "level": record.levelname,
-            "module": record.module,
-            "message": record.getMessage(),
-        }
-        if hasattr(record, "audit_context"):
-            log_payload["audit_metadata"] = record.audit_context
-        return json.dumps(log_payload)
+app = FastAPI(title="Hass Scientific - Enterprise Instrumentation Ingestion Gateway")
 
-logger = logging.getLogger("ClinicalAuditLogger")
-logger.setLevel(logging.INFO)
-log_handler = logging.StreamHandler(sys.stdout)
-log_handler.setFormatter(JSONAuditFormatter())
-logger.addHandler(log_handler)
+# High-speed thread-safe buffer queue for machine logs
+telemetry_queue = queue.Queue(maxsize=10000)
 
+class MachineTelemetryPayload(BaseModel):
+    machine_model: str             
+    serial_number: str             
+    timestamp: str
+    status_flag: str               
+    fault_code: Optional[str] = None  
+    operational_metric: Optional[float] = None 
 
-# --- 2. DEFINE THE PYTORCH NEURAL NETWORK BLUEPRINT ---
-class Biomedical1DCNN(nn.Module):
-    def __init__(self):
-        super(Biomedical1DCNN, self).__init__()
-        self.feature_extractor = nn.Sequential(
-            nn.Conv1d(in_channels=1, out_channels=16, kernel_size=7, stride=1, padding=3),
-            nn.BatchNorm1d(16),
-            nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2),
+def get_db_connection():
+    return psycopg2.connect(
+        dbname="postgres",
+        user="postgres",
+        password="postgres",
+        host="127.0.0.1",
+        port="5432"
+    )
+
+def db_worker_processor():
+    """Continuous background worker draining telemetry queues into PostgreSQL."""
+    print("🚀 Worker Thread Activated: Monitoring Hass Scientific Machine Streams.")
+    while True:
+        try:
+            payload = telemetry_queue.get()
+            conn = get_db_connection()
+            cur = conn.cursor()
             
-            nn.Conv1d(in_channels=16, out_channels=32, kernel_size=5, stride=1, padding=2),
-            nn.BatchNorm1d(32),
-            nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2)
-        )
-        self.classification_head = nn.Sequential(
-            nn.Linear(32 * 45, 64),
-            nn.ReLU(),
-            nn.Dropout(p=0.3),
-            nn.Linear(64, 2)
-        )
-
-    def forward(self, x):
-        x = self.feature_extractor(x)
-        x = x.view(x.size(0), -1)
-        return self.classification_head(x)
-
-AI_MODEL = None
-
-
-# --- 3. FASTAPI SERVER INITIALIZATION & VALIDATION SCHEMAS ---
-app = FastAPI(title="Clinical Telemetry Processing Service - Secure Compliance AI Edition")
-
-class TelemetrySchema(BaseModel):
-    patient_id: str = Field(..., example="PT-AI-001")
-    signal_waveform: list[float] = Field(..., description="Preprocessed 180-sample 1D ECG array slice")
-
-
-# --- 4. ASYNCHRONOUS DATABASE STORAGE AUDIT WORKER ---
-async def async_db_ingestion_worker(patient_id: str, is_arrhythmia: bool, operator_role: str):
-    await asyncio.sleep(0.02) # Prevent asynchronous pool thread starvation
-    
-    audit_data = {
-        "event_type": "DATABASE_WRITE",
-        "patient_id": patient_id,
-        "authorized_operator": operator_role,
-        "clinical_anomaly_flagged": is_arrhythmia
-    }
-    
-    if is_arrhythmia:
-        logger.warning(
-            f"🚨 AI classified an active cardiac arrhythmia anomaly for {patient_id}. Permanent emergency record generated.",
-            extra={"audit_context": audit_data}
-        )
-    else:
-        logger.info(
-            f"🗄️ Standard medical metric logging complete for {patient_id}. Normal sinus trace saved.",
-            extra={"audit_context": audit_data}
-        )
-
-
-# --- 5. SECURE LIVE AI INFERENCE ENDPOINT ---
-@app.post("/v1/device/data", status_code=status.HTTP_200_OK)
-async def receive_telemetry(
-    payload: TelemetrySchema, 
-    background_tasks: BackgroundTasks,
-    x_auth_role: str = Header(None, description="Simulated Authorization Token Header")
-):
-    # Security Rule Verification Profile
-    if x_auth_role != "admin" and x_auth_role != "clinician_peter":
-        logger.error(
-            "🛑 Unauthenticated network entry attempt blocked by gateway defense layers.",
-            extra={"audit_context": {"event_type": "SECURITY_DENIED", "attempted_role": str(x_auth_role)}}
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Access Denied: Invalid or Missing Cryptographic Role Credentials."
-        )
-
-    # Dimensional checking
-    if len(payload.signal_waveform) != 180:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Mismatched Vector Dimensionality. Expected 180 samples, received {len(payload.signal_waveform)}."
-        )
-
-    # Execute dynamic real-time PyTorch inference
-    input_tensor = torch.tensor(payload.signal_waveform, dtype=torch.float32).view(1, 1, 180)
-    with torch.no_grad():
-        logits = AI_MODEL(input_tensor)
-        _, prediction = torch.max(logits, dim=1)
-        detected_class = prediction.item()
-
-    is_arrhythmia = (detected_class == 1)
-
-    # Offload I/O database tracking safely to our background compliance worker pool
-    background_tasks.add_task(async_db_ingestion_worker, payload.patient_id, is_arrhythmia, x_auth_role)
-    
-    return {
-        "status": "SUCCESS", 
-        "message": f"Authenticated AI Diagnostics Finished for Role: {x_auth_role}",
-        "ai_analysis": {
-            "prediction_class_id": detected_class,
-            "diagnostic_label": "Cardiac Arrhythmia Flagged" if is_arrhythmia else "Normal Sinus Rhythm",
-            "critical_alert": is_arrhythmia
-        }
-    }
-
+            # Writing into a proper enterprise clinical database schema
+            insert_query = """
+            INSERT INTO machine_telemetry_logs (machine_model, serial_number, timestamp, status_flag, fault_code, operational_metric)
+            VALUES (%s, %s, %s, %s, %s, %s);
+            """
+            
+            cur.execute(insert_query, (
+                payload.machine_model,
+                payload.serial_number,
+                payload.timestamp,
+                payload.status_flag,
+                payload.fault_code,
+                payload.operational_metric
+            ))
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            print(f"💾 [ASYNC LOG SUCCESS] Processed telemetry packet for: {payload.machine_model}")
+            telemetry_queue.task_done()
+            
+        except Exception as e:
+            print(f"❌ Background DB insertion halt: {e}")
+            time.sleep(2)
 
 @app.on_event("startup")
-async def startup_event():
-    global AI_MODEL
-    # Mount our PyTorch state directory weights parameters matrix map file
-    AI_MODEL = Biomedical1DCNN()
+def startup_event():
     try:
-        weight_path = "arrhythmia_model_weights.pth"
-        AI_MODEL.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
-        AI_MODEL.eval()
-        logger.info(f"✅ State directory parameters successfully mounted from '{weight_path}'.", extra={"audit_context": {"event_type": "MODEL_MOUNT_SUCCESS"}})
-    except Exception as e:
-        logger.error(f"💥 Failed to mount neural network weights file: {e}", extra={"audit_context": {"event_type": "MODEL_MOUNT_CRASH"}})
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # Initialize an explicit database table for your clinical fleet logs
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS machine_telemetry_logs (
+                id SERIAL PRIMARY KEY,
+                machine_model VARCHAR(100) NOT NULL,
+                serial_number VARCHAR(50) NOT NULL,
+                timestamp TIMESTAMPTZ NOT NULL,
+                status_flag VARCHAR(20) NOT NULL,
+                fault_code VARCHAR(50),
+                operational_metric REAL
+            );
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
         
-    logger.info("🗄️ Relational schema layers successfully validated.", extra={"audit_context": {"event_type": "SYSTEM_STARTUP"}})
-    logger.info("🔐 Cryptographic HIPAA/GDPR Audit Logging Submodule Active.", extra={"audit_context": {"event_type": "SECURITY_READY"}})
+        # Launch background consumer task worker thread
+        worker_thread = threading.Thread(target=db_worker_processor, daemon=True)
+        worker_thread.start()
+        print("🚀 Asynchronous clinical instrumentation background daemon fully attached.")
+    except Exception as e:
+        print(f"⚠️ Service initialization checkpoint error: {e}")
+
+@app.post("/telemetry")
+async def receive_telemetry(payload: MachineTelemetryPayload):
+    try:
+        telemetry_queue.put_nowait(payload)
+        is_critical = payload.status_flag == "CRITICAL"
+        return {
+            "status": "QUEUED",
+            "message": f"Telemetry for {payload.machine_model} successfully pushed to buffer pool.",
+            "requires_immediate_field_service": is_critical
+        }
+    except queue.Full:
+        raise HTTPException(status_code=503, detail="Gateway ingestion pipeline buffer saturated.")

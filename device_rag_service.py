@@ -1,13 +1,12 @@
-import os
 import sqlite3
-from typing import List, Tuple
+from datetime import datetime
+from pypdf import PdfReader
+from docx import Document
 
 RAG_DB_PATH = "device_knowledge_base.db"
 HISTORY_DB_PATH = "field_solved_knowledge.db"
 
 def initialize_knowledge_base():
-    """Guarantees both manufacturer schemas and historical field memories are initialized."""
-    # Factory manuals schema
     conn = sqlite3.connect(RAG_DB_PATH)
     cur = conn.cursor()
     cur.execute("""
@@ -21,7 +20,6 @@ def initialize_knowledge_base():
     conn.commit()
     conn.close()
 
-    # Human-solved experience learning schema
     conn2 = sqlite3.connect(HISTORY_DB_PATH)
     cur2 = conn2.cursor()
     cur2.execute("""
@@ -45,25 +43,42 @@ def save_manual_chunk(machine_model: str, section_title: str, text_content: str)
     conn.commit()
     conn.close()
 
+def process_uploaded_file(selected_model, file_obj) -> int:
+    """Extracts text from PDF/DOCX files completely on the backend."""
+    initialize_knowledge_base()
+    chunks_saved = 0
+    file_ext = file_obj.name.split(".")[-1].lower()
+    
+    if file_ext == "pdf":
+        reader = PdfReader(file_obj)
+        for page_num in range(len(reader.pages)):
+            page_text = reader.pages[page_num].extract_text()
+            if page_text and page_text.strip():
+                save_manual_chunk(selected_model, f"[{file_obj.name}] Page {page_num + 1}", page_text.strip())
+                chunks_saved += 1
+    elif file_ext == "docx":
+        doc = Document(file_obj)
+        full_text = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
+        if full_text:
+            save_manual_chunk(selected_model, f"[{file_obj.name}] Word Contents", "\n".join(full_text))
+            chunks_saved += 1
+            
+    return chunks_saved
+
 def save_successful_fix(machine_model: str, error_code: str, technician_fix: str):
-    """Bakes a real-world technician solution permanently into the AI's memory layers."""
     initialize_knowledge_base()
     conn = sqlite3.connect(HISTORY_DB_PATH)
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO historical_fixes (machine_model, error_code, technician_fix, date_logged)
         VALUES (?, ?, ?, ?);
-    """, (machine_model, error_code.strip().upper(), technician_fix.strip(), sqlite3.datetime.datetime.now().isoformat()))
+    """, (machine_model, error_code.strip().upper(), technician_fix.strip(), datetime.now().isoformat()))
     conn.commit()
     conn.close()
 
 def query_and_analyze_fault(machine_model: str, query_keyword: str, user_suggestion: str = "") -> str:
-    """Scans historical solved cases first, then factory manuals, and combines 
-    them with active observations to output a prioritized action protocol.
-    """
     initialize_knowledge_base()
     
-    # 1. Search for previous human-solved records first
     conn_hist = sqlite3.connect(HISTORY_DB_PATH)
     cur_hist = conn_hist.cursor()
     cur_hist.execute("""
@@ -74,7 +89,6 @@ def query_and_analyze_fault(machine_model: str, query_keyword: str, user_suggest
     cur_hist.close()
     conn_hist.close()
 
-    # 2. Search manufacturer factory manuals base
     conn = sqlite3.connect(RAG_DB_PATH)
     cur = conn.cursor()
     cleaned_query = query_keyword.replace("-", " ").replace("_", " ")
@@ -94,44 +108,39 @@ def query_and_analyze_fault(machine_model: str, query_keyword: str, user_suggest
     cur.close()
     conn.close()
 
-    # Base classification tracking strings
     model_upper = machine_model.upper()
-    sys_type = "Automated Hematology Counter" if any(x in model_upper for x in ["ELITE", "H3", "H5", "H7"]) else (
-               "Automated Clinical Chemistry Analyzer" if any(x in model_upper for x in ["XL", "CHEM"]) else (
-               "Automated Electrolyte Analyzer (ISE)" if any(x in model_upper for x in ["EC", "LYTE"]) else "Advanced Clinical Diagnostic System"))
+    if "LABORATORY" in model_upper:
+        sys_type = "Automated Clinical Laboratory Platform"
+        deduction = "* Fluidic Pathway: Check microfluidic lines for blocks, syringe pumps, and clean sample probes.\n* Optical Path: Verify photometer sensors and flow-cell lenses."
+    elif "RADIOLOGY" in model_upper:
+        sys_type = "Diagnostic Medical Imaging Modality"
+        deduction = "* Electrical Bus: Verify high-voltage lines, panel shields, and test cooling fan parameters.\n* Signal Check: Inspect RF coils, gantry assemblies, or ultrasound transducers."
+    elif "THEATRE" in model_upper:
+        sys_type = "Surgical Suite & Anesthesia Infrastructure"
+        deduction = "* Pneumatic Loop: Verify gas pressure mixers, trace breathing lines for leaks, and test flow sensors.\n* RF Output: Check electrosurgical Diathermy ESU modules for output voltage shifts."
+    else:
+        sys_type = "Advanced Clinical System"
+        deduction = "* Core SMPS Check: Inspect power lines for stable 5V/12V/24V outputs and reset the logic registers."
 
-    # =======================================================
-    # OUTPUT FORMATTING: PRIORITY HYBRID INTELLIGENCE
-    # =======================================================
-    response = f"### 🧠 INTELLIGENCE REPORT FOR: {machine_model.upper()}\n"
+    response = f"### INTELLIGENCE REPORT FOR: {machine_model.upper()}\n"
     response += f"**Classification Profile:** `{sys_type}` | **Target Malfunction Key:** `{query_keyword.upper()}`\n\n"
 
-    # If the system finds a past human solution, prioritize it over everything else!
     if past_fixes:
-        response += "### 🌟 HIGH-PRIORITY: VERIFIED PAST FIELD SERVICE FIXES FOUND\n"
-        response += "The AI has retrieved historical repair workflows successfully logged by you for this exact symptom:\n"
+        response += "### HIGH-PRIORITY: VERIFIED PAST FIELD SERVICE FIXES FOUND\n"
         for fix, date in past_fixes:
             clean_date = date.split("T")[0]
             response += f"* **Logged Remedy ({clean_date}):** *\"{fix}\"*\n"
         response += "\n---\n"
 
-    # Present current collaborative brainstorming reflections
     if user_suggestion.strip():
-        response += f"#### 🤝 ACTIVE TEAM BRAINSTORMING INTERACTION\n"
-        response += f"Evaluating your current observation: *\"{user_suggestion}\"*\n"
-        response += "Combining your note with the diagnostic parameters to isolate microfluidic and circuit track anomalies.\n\n"
+        response += f"#### ACTIVE TEAM BRAINSTORMING INTERACTION\nObservation: *\"{user_suggestion}\"*\n\n"
 
-    # Present baseline manual data summaries
-    response += "#### 🔧 STEP-BY-STEP CORRECTIVE SERVICE PROTOCOL\n"
+    response += f"#### STEP-BY-STEP CORRECTIVE SERVICE PROTOCOL\n"
     if rows:
-        response += "Extracting direct procedures based on structural manufacturer documentation profiles:\n"
         for title, content in rows[:2]:
-            response += f"1. **Via {title}:** Check connections and clear alignment registers.\n"
+            response += f"1. **Via {title}:** Isolate modular circuitry loops and align parameters.\n"
     else:
-        response += "Deducing physical troubleshooting pathways based on system class mechanics:\n"
-        response += "1. **Hydraulic/Fluidic Isolation:** Verify fluid lines for micro-clots, bubble pockets, and check pump pressures.\n"
-        response += "2. **Electronic/Bus Verification:** Check switch-mode power lines for voltage sags and reseat ribbon bus contacts.\n"
+        response += f"{deduction}\n"
         
-    response += "3. **Baseline Recalibration:** Flush diagnostic paths and run a master baseline home-position initialization register cycle.\n"
-    
+    response += "3. **Alignment Sweep:** Flush paths, secure bus lines, and initialize home position."
     return response
