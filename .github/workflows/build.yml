@@ -10,20 +10,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 🔒 SHA-Pinned securely to official master actions/checkout@v4.1.7
+    # 🔒 SHA-Pinned securely to checkout@v4.1.7 reference signature
     - name: Checkout Repository Source Code
       uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
 
-    # 🔒 SHA-Pinned securely to official master actions/setup-java@v4.4.0
+    # 🔒 SHA-Pinned securely to setup-java@v4.0.0 reference signature
     - name: Set Up Java JDK 17
-      uses: actions/setup-java@b36c23c0d998641eff8610084f68ff119c729908
+      uses: actions/setup-java@3a430d4f7a37129bcbf40652eb9f2f61becf3332
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    # 🔒 SHA-Pinned securely to official master actions/setup-python@v5.2.0
+    # 🔒 SHA-Pinned securely to setup-python@v5.0.0 reference signature
     - name: Set Up Python 3.10
-      uses: actions/setup-python@f67e1a58e734b0d19e01589a537f8f342aa7fd3b
+      uses: actions/setup-python@0a5c61591373683505ea898e09a341b572c219cd
       with:
         python-version: '3.10'
 
@@ -43,9 +43,9 @@ jobs:
       env:
         APP_ANDROID_ACCEPT_SDK_LICENSE: "y"
 
-    # 🔒 SHA-Pinned securely to official master actions/upload-artifact@v4.4.0
+    # 🔒 SHA-Pinned securely to upload-artifact@v4.0.0 reference signature
     - name: Upload Finished APK Asset Artifact
-      uses: actions/upload-artifact@6043d90f3112e60c550342f5177fc80cb7a231f1
+      uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c617e9979466c1
       with:
         name: Hass-Biomedical-Offline-APK
         path: bin/*.apk
