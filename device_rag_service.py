@@ -75,17 +75,18 @@ def query_and_analyze_fault(machine_model: str, query_keyword: str, user_suggest
     conn = sqlite3.connect(RAG_DB_PATH)
     cur = conn.cursor()
     cleaned_query = query_keyword.replace("-", " ").replace("_", " ")
-    words = [wstrip() for w in cleaned_querysplit() if len(wstrip()) > ]
+    words = [w.strip() for w in cleaned_query.split() if len(w.strip()) > 0]
     if not words: 
         words = [query_keyword]
     
     base_query = "SELECT section_title, content FROM device_manual_chunks WHERE machine_model = ?"
-    conditions =
+    conditions = []
     params = [machine_model]
     for word in words:
         conditions.append("(content LIKE ? OR section_title LIKE ?)")
         pattern = f"%{word}%"
         params.extend([pattern, pattern])
+    
     full_query = f"{base_query} AND ({' AND '.join(conditions)})"
     cur.execute(full_query, params)
     rows = cur.fetchall()
@@ -94,6 +95,7 @@ def query_and_analyze_fault(machine_model: str, query_keyword: str, user_suggest
 
     model_upper = machine_model.upper()
     
+    # 🧠 Advanced Offline Deductive Reasoning Categorization Logic Engine
     if "LABORATORY" in model_upper:
         sys_type = "Automated Clinical Laboratory Platform"
         deduction = """* **Fluidic Pathway Verification:** Check microfluidic lines for blocks, micro-metering syringe pumps for alignment slips, and clean sample probes.
@@ -141,7 +143,7 @@ def query_and_analyze_fault(machine_model: str, query_keyword: str, user_suggest
     response += f"#### STEP-BY-STEP CORRECTIVE SERVICE PROTOCOL ({sys_type.upper()})\n"
     if rows:
         response += "Extracting direct field procedures based on localized matching manual contexts:\n"
-        for title, content in rows[:]:
+        for title, content in rows[:2]:
             response += f"1. **Via {title}:** Isolate modular circuitry loops and align parameters within specifications.\n"
     else:
         response += f"Deducing physical troubleshooting pathways based on system class mechanics:\n"
