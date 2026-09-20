@@ -4,10 +4,10 @@ import random
 from datetime import datetime
 from pypdf import PdfReader
 
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="Hass Scientific Diagnostic Hub")
 st.title("🔬 Hass Scientific & Medical Diagnostic Systems Hub")
 
-# Comprehensive machine fleet catalog matrix
+# Clean, fully closed string list array containing your exact inventory
 biomedical_fleet = [
     "bioMérieux VITEK 2 COMPACT", "bioMérieux MINI VIDAS", "bioMérieux VIDAS KUBE",
     "Erba XL-100", "Erba XL-180", "Erba XL-200", "Erba XL-300", "Erba XL-600", "Erba XL-640", "Erba XL-1000",
@@ -33,11 +33,10 @@ if user_role == "🔒 Administrator PDF Manual Ingestion Console":
     
     selected_model = st.selectbox("Target Laboratory Device Profile", biomedical_fleet, key="admin_model")
     
-    # 📑 Enhanced Multi-File Uploader widget anchor
     uploaded_pdfs = st.file_uploader(
         f"Select Service Manual PDFs for {selected_model}", 
         type=["pdf"], 
-        accept_multiple_files=True  # 👈 Enabled batch document processing
+        accept_multiple_files=True
     )
     
     if uploaded_pdfs:
@@ -46,10 +45,8 @@ if user_role == "🔒 Administrator PDF Manual Ingestion Console":
         if st.button("📥 Parse and Commit All PDF Documents to System Memory"):
             progress_bar = st.progress(0)
             total_files = len(uploaded_pdfs)
-            
             total_chunks_saved = 0
             
-            # Loop through each uploaded document in the batch array
             for file_index, pdf_file in enumerate(uploaded_pdfs):
                 st.markdown(f"⏳ Processing file {file_index + 1}/{total_files}: **{pdf_file.name}**")
                 try:
@@ -59,7 +56,7 @@ if user_role == "🔒 Administrator PDF Manual Ingestion Console":
                     for page_num in range(len(reader.pages)):
                         page_text = reader.pages[page_num].extract_text()
                         if page_text and page_text.strip():
-                            # Track chunk title by document name and page reference
+                            # Fixed variable name mapping to pdf_file.name
                             section_label = f"[{pdf_file.name}] Page {page_num + 1}"
                             clean_content = page_text.replace("\x00", "").strip()
                             
@@ -71,7 +68,6 @@ if user_role == "🔒 Administrator PDF Manual Ingestion Console":
                 except Exception as e:
                     st.error(f"❌ Structural extraction failure on '{pdf_file.name}': {str(e)}")
                 
-                # Update progress bar tracker metrics dynamically
                 progress_bar.progress((file_index + 1) / total_files)
             
             if total_chunks_saved > 0:
@@ -84,29 +80,22 @@ if user_role == "🔒 Administrator PDF Manual Ingestion Console":
 # =======================================================
 else:
     st.subheader("🛠️ Active Field Service Maintenance Log")
-    st.markdown("Log a field instrument issue below to extract step-by-step manufacturer troubleshooting resolutions.")
+    st.markdown("Log a field instrument issue below to trigger an AI-synthesized corrective action solution protocol.")
     
     user_model = st.selectbox("Target Instrument Profile", biomedical_fleet, key="user_model")
     serial_num = st.text_input("Machine Serial Number Matrix", value=f"SN-HASS-{random.randint(10000, 99999)}")
-    error_logged = st.text_input("Enter Active System Fault Code or Critical Symptom", placeholder="e.g., E-402, ISE-CAL-FAIL, Reagent Level Low")
+    error_logged = st.text_input("Enter Active System Fault Code or Critical Symptom", placeholder="e.g., E-402, W-102, ISE-CAL-FAIL, Reagent Level Low")
     
-    if st.button("🔍 Query Knowledge Base For Immediate Fix"):
+    if st.button("🔍 Analyze Problem and Generate Field Solution"):
         if error_logged:
-            with st.spinner("Scanning compiled technical service manual sheets..."):
-                solutions = rag.query_device_manual(user_model, error_logged)
+            with st.spinner("🤖 AI Engine cross-examining service manuals and synthesizing diagnostic solution..."):
                 
-                if solutions:
-                    st.success(f"💡 Found {len(solutions)} verified resolution protocol(s) within manual context documents:")
-                    for title, content in solutions:
-                        with st.expander(f"📖 Document Reference: {title}", expanded=True):
-                            st.markdown(f"**🔧 Engineering Corrective Actions:**\n{content}")
+                ai_solution = rag.query_and_analyze_fault(user_model, error_logged)
+                
+                if ai_solution:
+                    st.subheader("🛠️ AI Diagnostic Analysis & Action Protocol")
+                    st.markdown(ai_solution)
                 else:
-                    st.warning(f"🔍 No exact matching entries found for '{error_logged}' on {user_model}.")
-                    st.markdown(f"""
-                    **💡 Baseline Field Diagnostics Checklist for {user_model}:**
-                    * Inspect primary switch-mode power inputs, board voltages, and ribbon harness loops.
-                    * Initiate a standard prime sequence and flush the microfluidic path or optical apertures.
-                    * Verify internal pump pressures, reagent volumes, and sensor calibration curves.
-                    """)
+                    st.error("⚠️ System Error: Unable to compute diagnostic solution vectors.")
         else:
             st.error("⚠️ Empty parameter check: Please enter a symptom profile before querying.")
