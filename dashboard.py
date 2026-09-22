@@ -8,6 +8,7 @@ import re
 import base64
 from datetime import datetime
 from openai import OpenAI
+import database_manager  # Wire up our new modular local database script layer
 
 # --- 1. Page Global Setup & Configuration ---
 st.set_page_config(
@@ -18,6 +19,9 @@ st.set_page_config(
 
 KNOWLEDGE_STORE = "rag_knowledge_base.json"
 OPENAI_CLIENT = OpenAI(api_key=os.getenv("OPENAI_API_KEY", "mock-or-real-key"))
+
+# Initialize structural database matrices on dashboard thread startup
+database_manager.initialize_database()
 
 # --- 2. 🌟 Premium Obsidian Dark Corporate UI Styling Engine ---
 st.markdown("""
@@ -113,7 +117,6 @@ st.markdown("""
         border-radius: 8px !important;
         border: none !important;
         box-shadow: 0 4px 20px rgba(14, 165, 233, 0.4) !important;
-        transition: all 0.2s ease;
         width: 100%;
         margin-top: 15px;
     }
@@ -207,18 +210,46 @@ def analyze_hardware_image_with_vision(image_file, fault_code):
         return response.choices.message.content
     except Exception as e:
         return f"⚠️ Vision API Error: {str(e)}"
-
+# REPLACE PART 2 OF YOUR DASHBOARDAPPLICATIONS WITH THIS UPDATED MULTI-INSTRUMENT ASSEMBLY LAYER
+# ==============================================================================================
 
 # --- 6. Main Routing View Blocks ---
 
 if page_layout == "Field Service Maintenance Log":
     st.markdown('<div class="clinical-glass-banner"><h1>🔬 Hass Multimodal Vision Diagnostics</h1><p>Active Instrument Diagnosis Panel incorporating real-time computer vision analysis.</p></div>', unsafe_allow_html=True)
     
-    st.markdown("""
+    # 🌟 NEW UPGRADE: Dynamic Corporate Equipment Selection Selector Layer
+    st.markdown("### 🛰️ Core Facility Analyzer Selection Matrix")
+    instrument_selector = st.selectbox(
+        "Choose Target Diagnostic Asset Profile:",
+        [
+            "Laboratory - 5-Part Hematology Counter (Sysmex, Mindray, Erba) [SN-HASS-44321]",
+            "Microbiology - Automated Microbial Identification Analyzer (Vitek 2) [SN-HASS-99211]",
+            "Clinical Chemistry - Fully Automated Chemistry Analyzer (Erba XL Series) [SN-HASS-00192]",
+            "Custom/Other Hospital Diagnostic Line Asset"
+        ]
+    )
+    
+    # Dynamically extract and assign metadata values based on user dropdown selection
+    if "SN-HASS-44321" in instrument_selector:
+        display_device = "Laboratory - 5-Part Hematology Counter (Sysmex, Mindray, Erba)"
+        display_serial = "SN-HASS-44321"
+    elif "SN-HASS-99211" in instrument_selector:
+        display_device = "Microbiology - Automated Microbial Identification Analyzer (Vitek 2)"
+        display_serial = "SN-HASS-99211"
+    elif "SN-HASS-00192" in instrument_selector:
+        display_device = "Clinical Chemistry - Fully Automated Chemistry Analyzer (Erba XL Series)"
+        display_serial = "SN-HASS-00192"
+    else:
+        display_device = "Custom Unspecified Hospital Asset Line Infrastructure Node"
+        display_serial = "SN-HASS-UNKNOWN"
+
+    # Beautiful High-Contrast Target Profile Display Card Matrix
+    st.markdown(f"""
         <div class="hardware-data-card">
             <h4 style='margin:0 0 6px 0; color:#38BDF8; font-weight:700; letter-spacing:0.5px;'>TARGET INSTRUMENT INFRASTRUCTURE</h4>
-            <div style='font-size:1.25rem; font-weight:600; color:#F8FAFC;'>Laboratory - 5-Part Hematology Counter (Sysmex, Mindray, Erba)</div>
-            <div style='color:#94A3B8; font-weight:500; font-size:0.9rem; margin-top:4px;'>MACHINE SERIAL NUMBER MATRIX: <code style='color:#F43F5E; background-color:rgba(244,63,94,0.1); padding:2px 6px; border-radius:4px; border:1px solid rgba(244,63,94,0.2);'>SN-HASS-44321</code></div>
+            <div style='font-size:1.25rem; font-weight:600; color:#F8FAFC;'>{display_device}</div>
+            <div style='color:#94A3B8; font-weight:500; font-size:0.9rem; margin-top:4px;'>MACHINE SERIAL NUMBER MATRIX: <code style='color:#F43F5E; background-color:rgba(244,63,94,0.1); padding:2px 6px; border-radius:4px; border:1px solid rgba(244,63,94,0.2);'>{display_serial}</code></div>
         </div>
     """, unsafe_allow_html=True)
     
@@ -238,9 +269,9 @@ if page_layout == "Field Service Maintenance Log":
             if not fault_code.strip():
                 st.error("Validation Halt: A specific hardware fault code string is required.")
             else:
-                with st.spinner("Streaming diagnostic data frames to vision processing layer..."):
+                with st.spinner(f"Streaming data frames to vision processing layer for instrument {display_serial}..."):
                     if uploaded_hardware_img:
-                        st.image(uploaded_hardware_img, caption="Technician Transmitted Hardware Frame", use_container_width=True)
+                        st.image(uploaded_hardware_img, caption=f"Technician Transmitted Hardware Frame ({display_serial})", use_container_width=True)
                         vision_findings = analyze_hardware_image_with_vision(uploaded_hardware_img, fault_code)
                         st.markdown("### 👁️ AI Vision Analysis Result:")
                         st.info(vision_findings)
@@ -248,7 +279,7 @@ if page_layout == "Field Service Maintenance Log":
                         st.warning("⚠️ No physical hardware photo uploaded. Falling back onto baseline text manual metrics context.")
                         
                     st.success("### 📖 Grounded Technical Manual Instructions:")
-                    st.markdown(f"Grounded manual extraction verified for code reference `{fault_code.upper()}` based on Section 7.3 manufacturer fluidics alignment indices.")
+                    st.markdown(f"Grounded manual extraction verified for {display_device} code reference `{fault_code.upper()}` based on manufacturer alignment indices matrix lookup.")
                     st.balloons()
         else:
             st.info("Awaiting input arrays. Upload a hardware snapshot file and provide a fault code to view live parsing arrays.")
@@ -291,16 +322,16 @@ elif page_layout == "Asset Reliability Analytics":
     with col_g2:
         st.markdown("### Subsystem Failure Incidence Ratios")
         bar_data = pd.DataFrame({
-            "Incidents": [14, 8, 22, 5]
+            "Incidents": [14, 5, 22, 3]
         }, index=["Fluidic Valves", "Optical Sensors", "Peristaltic Pumps", "Thermal Plates"])
         st.bar_chart(bar_data)
 
 elif page_layout == "Manufacturer Document Ingestion Console":
     st.markdown('<div class="clinical-glass-banner"><h1>📁 Manufacturer Document Ingestion Console</h1><p>Upload raw equipment operation or service guides directly into your RAG text splitter vector arrays.</p></div>', unsafe_allow_html=True)
     
-    st.markdown("### Ingest Asset Resource Guide PDF")
-    st.text_input("Device Identification Name Specification", placeholder="e.g., Sysmex XN-550 Reference Sheet")
-    file_upload_slot = st.file_uploader("Upload Manufacturer Technical Documentation Sheet", type=["pdf", "txt"])
+    st.markdown("### Ingest Asset Resource Guide Bundle")
+    device_name = st.text_input("Device Identification Name Specification", placeholder="e.g., Sysmex XN-550 Reference Sheet")
+    file_upload_slot = st.file_uploader("Upload Manufacturer Technical Documentation Sheet", type=["pdf", "txt"], accept_multiple_files=True)
     st.button("Initialize Token Splitting & Embedding Operations")
 
 elif page_layout == "Add New Hospital Asset Line":
@@ -309,6 +340,6 @@ elif page_layout == "Add New Hospital Asset Line":
     with st.form("add_asset_line_form"):
         st.markdown("### Equipment Deployment Provisioning Matrix")
         st.text_input("Device Serial Identifier (Unique Matrix String)", placeholder="e.g., SN-HASS-XXXXX")
-        st.selectbox("Manufacturer Equipment Family Class", ["Hematology Counter", "Microbial Identification", "Chemistry Analyzer"])
+        st.selectbox("Manufacturer Equipment Family Family", ["Hematology Counter", "Microbial Identification", "Chemistry Analyzer"])
         st.text_input("Regional Deployment Facility Node Location", placeholder="e.g., Mombasa General Ward 3")
         st.form_submit_button("Provision Asset Configuration Pathway")
