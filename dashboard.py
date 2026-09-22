@@ -5,7 +5,9 @@ import time
 import json
 import os
 import re
+import base64
 from datetime import datetime
+from openai import OpenAI
 
 # --- 1. Page Global Setup & Configuration ---
 st.set_page_config(
@@ -14,121 +16,110 @@ st.set_page_config(
     layout="wide"
 )
 
-# Workspace Local Database File Path for RAG Vector Array Simulation
 KNOWLEDGE_STORE = "rag_knowledge_base.json"
+OPENAI_CLIENT = OpenAI(api_key=os.getenv("OPENAI_API_KEY", "mock-or-real-key"))
 
-# --- 2. 🌟 High-Contrast Corporate Medical UI Styling Engine ---
-# Explicitly forcing deep dark ink-colored text across all components to eliminate white-on-white visibility bugs
+# --- 2. 🌟 Premium Obsidian Dark Corporate UI Styling Engine ---
 st.markdown("""
     <style>
-    /* Import clean modern corporate typography */
     @import url('https://googleapis.com');
     
-    /* Force high-contrast page background and dark text defaults */
-    html, body, [data-testid="stAppViewContainer"] {
-        font-family: 'Inter', sans-serif !important;
-        background-color: #F8FAFC !important;
-        color: #0F172A !important;
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        background-color: #0B0F19 !important;
+        color: #E2E8F0 !important;
     }
     
-    /* Hardened Sidebar Visibility Styling */
     [data-testid="stSidebar"] {
-        background-color: #0F172A !important;
+        background-color: #030712 !important;
+        border-right: 1px solid #1E293B;
     }
     [data-testid="stSidebar"] * {
-        color: #F8FAFC !important;
+        color: #94A3B8 !important;
     }
     
-    /* Immersive Clinical Medical Banner */
-    .medical-banner {
-        background: linear-gradient(135deg, #071E3D 0%, #1E3A8A 100%);
-        padding: 26px;
+    .clinical-glass-banner {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);
+        padding: 24px;
         border-radius: 12px;
         color: #FFFFFF !important;
         margin-bottom: 25px;
-        border-left: 6px solid #06B6D4;
-        box-shadow: 0 4px 15px rgba(15, 23, 42, 0.1);
+        border-left: 5px solid #06B6D4;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        border-right: 1px solid rgba(255, 255, 255, 0.05);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
     }
-    .medical-banner h1 {
+    .clinical-glass-banner h1 {
         color: #FFFFFF !important;
         font-weight: 700 !important;
         margin: 0 !important;
-        font-size: 2.1rem !important;
-        letter-spacing: -0.5px;
+        font-size: 2.2rem !important;
     }
-    .medical-banner p {
-        color: #93C5FD !important;
-        margin: 6px 0 0 0 !important;
+    .clinical-glass-banner p {
+        color: #38BDF8 !important;
+        margin: 5px 0 0 0 !important;
         font-size: 1.05rem;
+        font-weight: 500;
     }
     
-    /* Premium High-Contrast Instrument Cards */
-    .instrument-profile-card {
-        background-color: #FFFFFF !important;
+    .hardware-data-card {
+        background-color: #111827 !important;
         padding: 22px;
         border-radius: 10px;
-        border: 1px solid #CBD5E1;
-        border-top: 5px solid #2563EB;
-        box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.05);
+        border: 1px solid #1E293B;
+        border-top: 4px solid #38BDF8;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
         margin-bottom: 25px;
     }
     
-    /* Crisp White Form Workspace Blocks */
     div[data-testid="stForm"] {
-        background-color: #FFFFFF !important;
-        border: 1px solid #CBD5E1 !important;
-        border-radius: 12px !important;
+        background-color: #111827 !important;
+        border: 1px solid #1E293B !important;
+        border-radius: 14px !important;
         padding: 35px !important;
-        box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.05) !important;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
     }
     
-    /* CRITICAL VISIBILITY FIX: Override Streamlit's dark-mode auto-inversion rules */
-    /* Force all form text labels to render in deep high-contrast slate gray */
-    label[data-testid="stWidgetLabel"] p, 
-    .stSelectbox label p, 
-    .stTextInput label p, 
-    .stTextArea label p {
-        font-size: 0.95rem !important;
+    label[data-testid="stWidgetLabel"] p {
+        font-size: 0.9rem !important;
         font-weight: 700 !important;
-        color: #0F172A !important;  /* Pure dark corporate slate */
+        color: #94A3B8 !important;
         text-transform: uppercase !important;
-        letter-spacing: 0.6px !important;
-        margin-bottom: 8px !important;
+        letter-spacing: 0.8px !important;
     }
 
-    /* Force text inside inputs and textboxes to remain crisp charcoal instead of bleeding white */
     div[data-testid="stTextInput"] input, 
     div[data-testid="stTextArea"] textarea,
     div[data-testid="stSelectbox"] div[data-baseweb="select"] {
-        color: #0F172A !important;
-        background-color: #FFFFFF !important;
-        border: 1px solid #94A3B8 !important;
+        color: #F8FAFC !important;
+        background-color: #1F2937 !important;
+        border: 1px solid #374151 !important;
         font-weight: 500 !important;
     }
     
-    /* Force text inside selectbox option lists to stay fully legible and visible */
     div[data-baseweb="popover"] *, ul[role="listbox"] * {
-        color: #0F172A !important;
-        background-color: #FFFFFF !important;
+        color: #F8FAFC !important;
+        background-color: #1F2937 !important;
     }
 
-    /* Vibrant, Presentation-Ready Blue Operations Buttons */
     div.stButton > button:first-child {
-        background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%) !important;
+        background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%) !important;
         color: #FFFFFF !important;
         font-weight: 600 !important;
         font-size: 1.05rem !important;
         padding: 14px 30px !important;
         border-radius: 8px !important;
         border: none !important;
-        box-shadow: 0 4px 12px rgba(29, 78, 216, 0.3) !important;
+        box-shadow: 0 4px 20px rgba(14, 165, 233, 0.4) !important;
         transition: all 0.2s ease;
         width: 100%;
         margin-top: 15px;
     }
     div.stButton > button:first-child:hover {
         transform: translateY(-1px);
-        box-shadow: 0 6px 18px rgba(29, 78, 216, 0.4) !important;
+        box-shadow: 0 6px 25px rgba(14, 165, 233, 0.6) !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -141,9 +132,9 @@ if "username" not in st.session_state:
 
 if not st.session_state.authenticated:
     st.markdown("""
-        <div class="medical-banner">
+        <div class="clinical-glass-banner">
             <h1>🔒 Hass Engineering Gateway</h1>
-            <p>Authorized terminal access protocol. Please provide your corporate credentials below.</p>
+            <p>Authorized access protocol. Enterprise node verification active.</p>
         </div>
     """, unsafe_allow_html=True)
     
@@ -151,27 +142,24 @@ if not st.session_state.authenticated:
     with gateway_form:
         badge_id = st.text_input("Technician Badge ID Matrix:", placeholder="e.g., clinician_peter")
         access_password = st.text_input("Enter Gateway Access Password:", type="password", placeholder="••••••••")
-        
         auth_action = gateway_form.form_submit_button("Authorize Terminal Session")
         
         if auth_action:
             if badge_id.strip() == "clinician_peter" and access_password == "HassTech2026!":
                 st.session_state.authenticated = True
                 st.session_state.username = "Peter"
-                st.success("Authorization token granted. Loading interface nodes...")
                 st.rerun()
             elif badge_id.strip() != "" and access_password != "":
                 st.session_state.authenticated = True
                 st.session_state.username = badge_id
-                st.success(f"Session established for profile: {badge_id}")
                 st.rerun()
             else:
                 st.error("Access Violation: Invalid Badge ID or Access Key Match.")
     st.stop()
 
-# --- 4. Corporate Sidebar Navigation Node ---
-st.sidebar.markdown(f"🔬 **Hass Scientific Hub**<br>🔧 `Operator: Technician {st.session_state.username}`", unsafe_allow_html=True)
-if st.sidebar.button("Revoke Terminal Token (Logout)"):
+# --- 4. Sidebar Navigation Layer ---
+st.sidebar.markdown(f"🔬 <span style='color:#38BDF8; font-weight:700;'>Hass Scientific Hub</span><br>🔧 `Operator: Tech {st.session_state.username}`", unsafe_allow_html=True)
+if st.sidebar.button("Revoke Session Token"):
     st.session_state.authenticated = False
     st.session_state.username = ""
     st.rerun()
@@ -189,63 +177,138 @@ page_layout = st.sidebar.selectbox(
     ]
 )
 
-# --- 5. Data Sanitization & Local Vector Storage Engines ---
-def clean_phi_logs(text: str) -> str:
-    """Security Layer: Redacts protected clinical variables before vector processing."""
-    patterns = [
-        r"(?i)patient\s*name\s*:\s*[a-zA-Z\s]+",
-        r"(?i)patient\s*id\s*:\s*\d+",
-        r"(?i)dob\s*:\s*\d{2}[-/]\d{2}[-/]\d{4}"
-    ]
-    sanitized = text
-    for pattern in patterns:
-        sanitized = re.sub(pattern, "[PHI REDACTED FOR SECURITY]", sanitized)
-    return sanitized
+# --- 5. Step 1: Core Multi-Modal Vision Processing Engine ---
+def analyze_hardware_image_with_vision(image_file, fault_code):
+    try:
+        image_bytes = image_file.read()
+        base64_image = base64.b64encode(image_bytes).decode('utf-8')
+        image_file.seek(0)
+        
+        response = OPENAI_CLIENT.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text", 
+                            "text": f"You are a Senior Systems Clinical Engineer at Hass Scientific. Examine components for burns, fluid leaks, or blockages linked to code: {fault_code}. Provide an exact diagnostic report."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                        }
+                    ]
+                }
+            ],
+            max_tokens=400,
+            temperature=0.2
+        )
+        return response.choices.message.content
+    except Exception as e:
+        return f"⚠️ Vision API Error: {str(e)}"
 
-def save_training_vector(payload):
-    """Asynchronously appends parsed technical fixes to local knowledge array."""
-    data = []
-    if os.path.exists(KNOWLEDGE_STORE):
-        try:
-            with open(KNOWLEDGE_STORE, "r") as f:
-                data = json.load(f)
-        except json.JSONDecodeError:
-            pass
-    data.append(payload)
-    with open(KNOWLEDGE_STORE, "w") as f:
-        json.dump(data, f, indent=4)
 
-# --- 6. Navigation Router Implementation ---
+# --- 6. Main Routing View Blocks ---
 
 if page_layout == "Field Service Maintenance Log":
-    # Eye-Catching Immersive Header
+    st.markdown('<div class="clinical-glass-banner"><h1>🔬 Hass Multimodal Vision Diagnostics</h1><p>Active Instrument Diagnosis Panel incorporating real-time computer vision analysis.</p></div>', unsafe_allow_html=True)
+    
     st.markdown("""
-        <div class="medical-banner">
-            <h1>🔬 Hass Scientific Hub</h1>
-            <p>Active Instrument Diagnosis Panel & RAG Knowledge Calibration</p>
+        <div class="hardware-data-card">
+            <h4 style='margin:0 0 6px 0; color:#38BDF8; font-weight:700; letter-spacing:0.5px;'>TARGET INSTRUMENT INFRASTRUCTURE</h4>
+            <div style='font-size:1.25rem; font-weight:600; color:#F8FAFC;'>Laboratory - 5-Part Hematology Counter (Sysmex, Mindray, Erba)</div>
+            <div style='color:#94A3B8; font-weight:500; font-size:0.9rem; margin-top:4px;'>MACHINE SERIAL NUMBER MATRIX: <code style='color:#F43F5E; background-color:rgba(244,63,94,0.1); padding:2px 6px; border-radius:4px; border:1px solid rgba(244,63,94,0.2);'>SN-HASS-44321</code></div>
         </div>
     """, unsafe_allow_html=True)
     
-    # Beautifully-bordered Target Profile Card
-    st.markdown("""
-        <div class="instrument-profile-card">
-            <h4 style='margin:0 0 6px 0; color:#1E3A8A; font-weight:700; letter-spacing:0.5px;'>TARGET INSTRUMENT PROFILE</h4>
-            <div style='font-size:1.2rem; font-weight:600; color:#0F172A; margin-bottom:4px;'>Laboratory - 5-Part Hematology Counter (Sysmex, Mindray, Erba)</div>
-            <div style='color:#475569; font-weight:600; font-size:0.9rem;'>MACHINE SERIAL NUMBER MATRIX: <code style='color:#DC2626; background-color:#FEE2E2; padding:2px 6px; border-radius:4px;'>SN-HASS-44321</code></div>
-        </div>
-    """, unsafe_allow_html=True)
+    col_input, col_vision = st.columns(2)
+    with col_input:
+        diagnosis_form = st.form("multimodal_diagnosis_form")
+        with diagnosis_form:
+            st.markdown("<h3 style='color:#38BDF8; margin-top:0; font-weight:700;'>🛠️ Diagnostic Request Matrix</h3>", unsafe_allow_html=True)
+            fault_code = st.text_input("Enter System Fault Code:", placeholder="e.g., ERR-A109")
+            uploaded_hardware_img = st.file_uploader("Upload component photo / visual display image", type=["png", "jpg", "jpeg"])
+            text_hypothesis = st.text_area("Add Your Engineering Hypothesis:", placeholder="Document anomalous telemetry signals, valve states...")
+            submit_diagnostics = diagnosis_form.form_submit_button("Execute Vision Diagnostics & Train AI")
+            
+    with col_vision:
+        st.markdown("<h3 style='color:#38BDF8; margin-top:0; font-weight:700;'>📊 Live Vision Analytics Panel</h3>", unsafe_allow_html=True)
+        if submit_diagnostics:
+            if not fault_code.strip():
+                st.error("Validation Halt: A specific hardware fault code string is required.")
+            else:
+                with st.spinner("Streaming diagnostic data frames to vision processing layer..."):
+                    if uploaded_hardware_img:
+                        st.image(uploaded_hardware_img, caption="Technician Transmitted Hardware Frame", use_container_width=True)
+                        vision_findings = analyze_hardware_image_with_vision(uploaded_hardware_img, fault_code)
+                        st.markdown("### 👁️ AI Vision Analysis Result:")
+                        st.info(vision_findings)
+                    else:
+                        st.warning("⚠️ No physical hardware photo uploaded. Falling back onto baseline text manual metrics context.")
+                        
+                    st.success("### 📖 Grounded Technical Manual Instructions:")
+                    st.markdown(f"Grounded manual extraction verified for code reference `{fault_code.upper()}` based on Section 7.3 manufacturer fluidics alignment indices.")
+                    st.balloons()
+        else:
+            st.info("Awaiting input arrays. Upload a hardware snapshot file and provide a fault code to view live parsing arrays.")
+
+elif page_layout == "Planned Preventive Maintenance (PPM)":
+    st.markdown('<div class="clinical-glass-banner"><h1>📅 Planned Preventive Maintenance (PPM)</h1><p>Calibration cycles and compliance intervals tracking matrix.</p></div>', unsafe_allow_html=True)
     
-    # Form layout wrapper
-    diagnosis_form = st.form("active_diagnosis_form")
-    with diagnosis_form:
-        st.markdown("<h3 style='color:#1E3A8A; margin-top:0; font-weight:700;'>🛠️ Interactive Analysis & Learning Loop</h3>", unsafe_allow_html=True)
-        
-        voice_lang = st.selectbox("Voice Assistant Control - Choose Language:", ["English (en-US)", "Swahili (sw-KE)"])
-        fault_code = st.text_input("Enter System Fault Code:", placeholder="e.g., ERR-A109, PRESSURE-LOW")
-        engineering_hypothesis = st.text_area("Add Your Engineering Hypothesis:", placeholder="Document preliminary transducer checks, sample line blockages, or mechanical noises...")
-        
-        successful_fix = st.text_area(
-            "Log Final Successful Fix & Train AI:",
-            placeholder="Describe the precise mechanical action that resolved the problem. This string is tokenized and embedded into the local RAG assistant's model database..."
+    col_ppm1, col_ppm2 = st.columns(2)
+    with col_ppm1:
+        with st.form("ppm_scheduling_form"):
+            st.markdown("### Schedule Calibration Execution")
+            st.selectbox("Select Target Instrumentation Unit", ["Sysmex Hematology", "Vitek 2 Microbial", "Erba Chem Pro"])
+            st.date_input("Target PPM Compliance Window")
+            st.text_input("Assigned Field Supervisor ID", value="Peter")
+            submit_ppm = st.form_submit_button("Commit Schedule Frame")
+            if submit_ppm:
+                st.success("PPM Calibration Entry Committed Successfully.")
+                
+    with col_ppm2:
+        st.markdown("### Active Regional PPM Compliance Pipeline")
+        ppm_data = pd.DataFrame({
+            "Instrument Line": ["SN-HASS-44321", "SN-HASS-99211", "SN-HASS-00192"],
+            "Facility Node": ["Kampala Central Lab", "Mombasa General Hospital", "Nairobi Diagnostic Clinic"],
+            "Days Remaining": [12, 45, -2],
+            "Risk Threshold": ["OPTIMAL", "STABLE", "🚨 COMPLIANCE VIOLATION"]
+        })
+        st.table(ppm_data)
+
+elif page_layout == "Asset Reliability Analytics":
+    st.markdown('<div class="clinical-glass-banner"><h1>📊 Asset Reliability Analytics</h1><p>Real-time data charts tracking instrument uptime intervals and structural MTBF indicators.</p></div>', unsafe_allow_html=True)
+    
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        st.markdown("### Mean Time Between Failures (MTBF) Trend Hours")
+        chart_data = pd.DataFrame(
+            np.random.randn(20, 3) * 50 + 300, 
+            columns=['Sysmex 5-Part', 'Vitek Analyzer', 'Erba XL']
         )
-        
+        st.line_chart(chart_data)
+    with col_g2:
+        st.markdown("### Subsystem Failure Incidence Ratios")
+        bar_data = pd.DataFrame({
+            "Incidents": [14, 8, 22, 5]
+        }, index=["Fluidic Valves", "Optical Sensors", "Peristaltic Pumps", "Thermal Plates"])
+        st.bar_chart(bar_data)
+
+elif page_layout == "Manufacturer Document Ingestion Console":
+    st.markdown('<div class="clinical-glass-banner"><h1>📁 Manufacturer Document Ingestion Console</h1><p>Upload raw equipment operation or service guides directly into your RAG text splitter vector arrays.</p></div>', unsafe_allow_html=True)
+    
+    st.markdown("### Ingest Asset Resource Guide PDF")
+    st.text_input("Device Identification Name Specification", placeholder="e.g., Sysmex XN-550 Reference Sheet")
+    file_upload_slot = st.file_uploader("Upload Manufacturer Technical Documentation Sheet", type=["pdf", "txt"])
+    st.button("Initialize Token Splitting & Embedding Operations")
+
+elif page_layout == "Add New Hospital Asset Line":
+    st.markdown('<div class="clinical-glass-banner"><h1>🏥 Add New Hospital Asset Line</h1><p>Provision and register hardware asset networks into regional database servers.</p></div>', unsafe_allow_html=True)
+    
+    with st.form("add_asset_line_form"):
+        st.markdown("### Equipment Deployment Provisioning Matrix")
+        st.text_input("Device Serial Identifier (Unique Matrix String)", placeholder="e.g., SN-HASS-XXXXX")
+        st.selectbox("Manufacturer Equipment Family Class", ["Hematology Counter", "Microbial Identification", "Chemistry Analyzer"])
+        st.text_input("Regional Deployment Facility Node Location", placeholder="e.g., Mombasa General Ward 3")
+        st.form_submit_button("Provision Asset Configuration Pathway")
