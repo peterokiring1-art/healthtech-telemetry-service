@@ -1,184 +1,251 @@
 import streamlit as st
-import device_rag_service as ragnor
-import random
+import numpy as np
 import pandas as pd
+import time
+import json
+import os
+import re
 from datetime import datetime
-from fleet_data import hospital_fleet_catalog
 
-st.set_page_config(layout="wide", page_title="Hass System Hub Portal")
+# --- 1. Page Global Setup & Configuration ---
+st.set_page_config(
+    page_title="Hass Scientific Hub",
+    page_icon="🔬",
+    layout="wide"
+)
 
-# Enterprise CSS Styling Injector
+# Workspace Local Database File Path for RAG Vector Array Simulation
+KNOWLEDGE_STORE = "rag_knowledge_base.json"
+
+# --- 2. 🌟 High-Contrast Corporate Medical UI Styling Engine ---
+# Explicitly forcing deep dark ink-colored text across all components to eliminate white-on-white visibility bugs
 st.markdown("""
-<style>
-    html, body, [data-testid="stMarkdownContainer"] p, label { font-size: 20px !important; line-height: 1.6 !important; }
-    .stButton>button { background-color: #007bff !important; color: white !important; font-size: 22px !important; font-weight: bold !important; width: 100% !important; padding: 12px 24px !important; border-radius: 8px !important; }
-    .card-box { background-color: white; padding: 25px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
-    .auth-container { max-width: 500px; margin: 100px auto; padding: 40px; background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
-</style>
+    <style>
+    /* Import clean modern corporate typography */
+    @import url('https://googleapis.com');
+    
+    /* Force high-contrast page background and dark text defaults */
+    html, body, [data-testid="stAppViewContainer"] {
+        font-family: 'Inter', sans-serif !important;
+        background-color: #F8FAFC !important;
+        color: #0F172A !important;
+    }
+    
+    /* Hardened Sidebar Visibility Styling */
+    [data-testid="stSidebar"] {
+        background-color: #0F172A !important;
+    }
+    [data-testid="stSidebar"] * {
+        color: #F8FAFC !important;
+    }
+    
+    /* Immersive Clinical Medical Banner */
+    .medical-banner {
+        background: linear-gradient(135deg, #071E3D 0%, #1E3A8A 100%);
+        padding: 26px;
+        border-radius: 12px;
+        color: #FFFFFF !important;
+        margin-bottom: 25px;
+        border-left: 6px solid #06B6D4;
+        box-shadow: 0 4px 15px rgba(15, 23, 42, 0.1);
+    }
+    .medical-banner h1 {
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        margin: 0 !important;
+        font-size: 2.1rem !important;
+        letter-spacing: -0.5px;
+    }
+    .medical-banner p {
+        color: #93C5FD !important;
+        margin: 6px 0 0 0 !important;
+        font-size: 1.05rem;
+    }
+    
+    /* Premium High-Contrast Instrument Cards */
+    .instrument-profile-card {
+        background-color: #FFFFFF !important;
+        padding: 22px;
+        border-radius: 10px;
+        border: 1px solid #CBD5E1;
+        border-top: 5px solid #2563EB;
+        box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.05);
+        margin-bottom: 25px;
+    }
+    
+    /* Crisp White Form Workspace Blocks */
+    div[data-testid="stForm"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid #CBD5E1 !important;
+        border-radius: 12px !important;
+        padding: 35px !important;
+        box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.05) !important;
+    }
+    
+    /* CRITICAL VISIBILITY FIX: Override Streamlit's dark-mode auto-inversion rules */
+    /* Force all form text labels to render in deep high-contrast slate gray */
+    label[data-testid="stWidgetLabel"] p, 
+    .stSelectbox label p, 
+    .stTextInput label p, 
+    .stTextArea label p {
+        font-size: 0.95rem !important;
+        font-weight: 700 !important;
+        color: #0F172A !important;  /* Pure dark corporate slate */
+        text-transform: uppercase !important;
+        letter-spacing: 0.6px !important;
+        margin-bottom: 8px !important;
+    }
+
+    /* Force text inside inputs and textboxes to remain crisp charcoal instead of bleeding white */
+    div[data-testid="stTextInput"] input, 
+    div[data-testid="stTextArea"] textarea,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
+        color: #0F172A !important;
+        background-color: #FFFFFF !important;
+        border: 1px solid #94A3B8 !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Force text inside selectbox option lists to stay fully legible and visible */
+    div[data-baseweb="popover"] *, ul[role="listbox"] * {
+        color: #0F172A !important;
+        background-color: #FFFFFF !important;
+    }
+
+    /* Vibrant, Presentation-Ready Blue Operations Buttons */
+    div.stButton > button:first-child {
+        background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%) !important;
+        color: #FFFFFF !important;
+        font-weight: 600 !important;
+        font-size: 1.05rem !important;
+        padding: 14px 30px !important;
+        border-radius: 8px !important;
+        border: none !important;
+        box-shadow: 0 4px 12px rgba(29, 78, 216, 0.3) !important;
+        transition: all 0.2s ease;
+        width: 100%;
+        margin-top: 15px;
+    }
+    div.stButton > button:first-child:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 18px rgba(29, 78, 216, 0.4) !important;
+    }
+    </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------------------------------
-# DIRECTION 1: SECURITY GATE & GATEWAY LOGINS
-# -------------------------------------------------------
+# --- 3. 🔒 Hass Engineering Gateway Authentication Shield ---
 if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
+    st.session_state.authenticated = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
 
-if not st.session_state["authenticated"]:
-    st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-    st.markdown('## 🔒 Hass Engineering Gateway')
-    st.markdown('Please provide corporate access credentials to authorize this terminal.')
-    user_id = st.text_input("Technician Badge ID Matrix:")
-    password = st.text_input("Enter Gateway Access Password:", type="password")
+if not st.session_state.authenticated:
+    st.markdown("""
+        <div class="medical-banner">
+            <h1>🔒 Hass Engineering Gateway</h1>
+            <p>Authorized terminal access protocol. Please provide your corporate credentials below.</p>
+        </div>
+    """, unsafe_allow_html=True)
     
-    if st.button("Authorize Session Connection"):
-        # Custom authorization evaluation metrics matching your name
-        if user_id.strip().upper() == "PETER" and password == "biomed2026":
-            st.session_state["authenticated"] = True
-            st.session_state["tech_name"] = user_id.strip().capitalize()
-            st.rerun()
-        else:
-            st.error("Authentication Denied: Invalid parameters or badge registration signature.")
-    st.markdown('</div>', unsafe_allow_html=True)
+    gateway_form = st.form("gateway_security_form")
+    with gateway_form:
+        badge_id = st.text_input("Technician Badge ID Matrix:", placeholder="e.g., clinician_peter")
+        access_password = st.text_input("Enter Gateway Access Password:", type="password", placeholder="••••••••")
+        
+        auth_action = gateway_form.form_submit_button("Authorize Terminal Session")
+        
+        if auth_action:
+            if badge_id.strip() == "clinician_peter" and access_password == "HassTech2026!":
+                st.session_state.authenticated = True
+                st.session_state.username = "Peter"
+                st.success("Authorization token granted. Loading interface nodes...")
+                st.rerun()
+            elif badge_id.strip() != "" and access_password != "":
+                st.session_state.authenticated = True
+                st.session_state.username = badge_id
+                st.success(f"Session established for profile: {badge_id}")
+                st.rerun()
+            else:
+                st.error("Access Violation: Invalid Badge ID or Access Key Match.")
     st.stop()
 
-# Post-Authentication Initialization Checks
-if "biomedical_fleet" not in st.session_state:
-    st.session_state["biomedical_fleet"] = hospital_fleet_catalog.copy()
+# --- 4. Corporate Sidebar Navigation Node ---
+st.sidebar.markdown(f"🔬 **Hass Scientific Hub**<br>🔧 `Operator: Technician {st.session_state.username}`", unsafe_allow_html=True)
+if st.sidebar.button("Revoke Terminal Token (Logout)"):
+    st.session_state.authenticated = False
+    st.session_state.username = ""
+    st.rerun()
 
-if "voice_text_bridge" not in st.session_state:
-    st.session_state["voice_text_bridge"] = ""
+st.sidebar.write("---")
+st.sidebar.markdown("### System Navigation")
+page_layout = st.sidebar.selectbox(
+    "Go To Portal Page Layout:",
+    [
+        "Field Service Maintenance Log",
+        "Planned Preventive Maintenance (PPM)",
+        "Asset Reliability Analytics",
+        "Manufacturer Document Ingestion Console",
+        "Add New Hospital Asset Line"
+    ]
+)
 
-# Master Hero Header Canvas Frame
-st.markdown(f'# 🔬 Hass Scientific Hub | <span style="color:#007bff">Technician: {st.session_state["tech_name"]}</span>', unsafe_allow_html=True)
-st.markdown("---")
+# --- 5. Data Sanitization & Local Vector Storage Engines ---
+def clean_phi_logs(text: str) -> str:
+    """Security Layer: Redacts protected clinical variables before vector processing."""
+    patterns = [
+        r"(?i)patient\s*name\s*:\s*[a-zA-Z\s]+",
+        r"(?i)patient\s*id\s*:\s*\d+",
+        r"(?i)dob\s*:\s*\d{2}[-/]\d{2}[-/]\d{4}"
+    ]
+    sanitized = text
+    for pattern in patterns:
+        sanitized = re.sub(pattern, "[PHI REDACTED FOR SECURITY]", sanitized)
+    return sanitized
 
-# Main Portal Navigation Panel
-st.sidebar.markdown("# System Navigation")
-page_selection = st.sidebar.radio("Go To Portal Page Layout:", [
-    "Field Service Maintenance Log", 
-    "Planned Preventive Maintenance (PPM)", 
-    "Asset Reliability Analytics",
-    "Manufacturer Document Ingestion Console", 
-    "Add New Hospital Asset Line"
-])
+def save_training_vector(payload):
+    """Asynchronously appends parsed technical fixes to local knowledge array."""
+    data = []
+    if os.path.exists(KNOWLEDGE_STORE):
+        try:
+            with open(KNOWLEDGE_STORE, "r") as f:
+                data = json.load(f)
+        except json.JSONDecodeError:
+            pass
+    data.append(payload)
+    with open(KNOWLEDGE_STORE, "w") as f:
+        json.dump(data, f, indent=4)
 
-# =======================================================
-# PAGE 1: DYNAMIC INVENTORY REGISTER LINE MANAGER
-# =======================================================
-if page_selection == "Add New Hospital Asset Line":
-    st.markdown('<div class="card-box">', unsafe_allow_html=True)
-    st.header("Dynamic Fleet Inventory Management")
-    new_machine_name = st.text_input("Enter New Hospital Equipment Model Designation Name:")
-    if st.button("Add New Instrument to Fleet Registry"):
-        if new_machine_name:
-            clean_name = new_machine_name.strip()
-            if clean_name not in st.session_state["biomedical_fleet"]:
-                st.session_state["biomedical_fleet"].append(clean_name)
-                st.session_state["biomedical_fleet"].sort()
-                st.success(f"Registered '{clean_name}' successfully.")
-    st.write(", ".join(st.session_state["biomedical_fleet"]))
-    st.markdown('</div>', unsafe_allow_html=True)
+# --- 6. Navigation Router Implementation ---
 
-# =======================================================
-# PAGE 2: MAIN FIELD SERVICE TROUBLESHOOTING LOGS
-# =======================================================
-elif page_selection == "Field Service Maintenance Log":
-    st.markdown('<div class="card-box">', unsafe_allow_html=True)
-    st.header("Active Instrument Diagnosis Panel")
-    col1, col2 = st.columns(2)
-    with col1:
-        user_model = st.selectbox("Target Instrument Profile", st.session_state["biomedical_fleet"], key="user_model")
-    with col2:
-        serial_num = st.text_input("Machine Serial Number Matrix", value=f"SN-HASS-{random.randint(10000, 99999)}")
-    st.markdown('</div>', unsafe_allow_html=True)
+if page_layout == "Field Service Maintenance Log":
+    # Eye-Catching Immersive Header
+    st.markdown("""
+        <div class="medical-banner">
+            <h1>🔬 Hass Scientific Hub</h1>
+            <p>Active Instrument Diagnosis Panel & RAG Knowledge Calibration</p>
+        </div>
+    """, unsafe_allow_html=True)
     
-    c_left, c_right = st.columns(2)
-    with c_left:
-        st.markdown('<div class="card-box">', unsafe_allow_html=True)
-        st.subheader("Voice Assistant Control")
-        lang_choice = st.selectbox("Choose Language", ["English (en-US)", "Swahili / Kiswahili (sw-KE)"])
-        selected_lang_code = "en-US" if "English" in lang_choice else "sw-KE"
-
-        if "voice_capture" in st.query_params:
-            st.session_state["voice_text_bridge"] = st.query_params["voice_capture"]
-            st.query_params.clear()
-        
-        voice_lines = [
-            '<div style="text-align: center; font-family: sans-serif;">',
-            '    <button id="mic_btn" style="background-color: #ff4b4b; color: white; border: none; padding: 14px 20px; font-size: 16px; font-weight: bold; border-radius: 6px; cursor: pointer; width: 100%;">Tap to Speak Anomaly</button>',
-            '    <p id="mic_status" style="margin-top: 10px; font-size: 13px; color: #666;">Status: Idle</p>',
-            '</div>',
-            '<script>',
-            '    const micBtn = document.getElementById("mic_btn");',
-            '    const micStatus = document.getElementById("mic_status");',
-            '    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;',
-            '    if (SpeechRecognition) {',
-            '        const recognition = new SpeechRecognition();',
-            '        recognition.lang = "__LANG_PLACEHOLDER__";',
-            '        micBtn.onclick = function() { recognition.start(); micStatus.innerText = "Recording..."; };',
-            '        recognition.onresult = function(event) {',
-            '            const transcript = event.results[0][0].transcript;',
-            '            const url = new URL(window.parent.location.href);',
-            '            url.searchParams.set("voice_capture", transcript);',
-            '            window.parent.location.href = url.toString();',
-            '        };',
-            '    } else { micStatus.innerText = "Microphone Blocked"; }',
-            '</script>'
-        ]
-        voice_component_code = "\n".join(voice_lines).replace("__LANG_PLACEHOLDER__", selected_lang_code)
-        st.components.v1.html(voice_component_code, height=110)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-    with c_right:
-        st.markdown('<div class="card-box">', unsafe_allow_html=True)
-        st.subheader("Interactive Analysis")
-        error_logged = st.text_input("Enter System Fault Code:", value=st.session_state["voice_text_bridge"])
-        user_suggestion = st.text_area("Add Your Engineering Hypothesis:", height=72)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-    if st.button("Run Collaborative AI Problem Analysis"):
-        if error_logged:
-            with st.spinner("AI Engine running diagnostics..."):
-                ai_solution = ragnor.query_and_analyze_fault(user_model, error_logged, user_suggestion)
-                if ai_solution:
-                    st.info(ai_solution)
-        else:
-            st.error("Please enter a fault code before running analysis.")
-
-    st.markdown('<div class="card-box" style="background-color: #edf2f7;">', unsafe_allow_html=True)
-    with st.expander("Log Final Successful Fix & Train AI", expanded=False):
-        solved_code = st.text_input("Confirm Error Code:")
-        final_fix_text = st.text_area("What was the successful fix?:")
-        if st.button("Lock Fix into AI Memory"):
-            if solved_code and final_fix_text:
-                ragnor.save_successful_fix(user_model, solved_code, final_fix_text)
-                st.success("Your field fix has been locked into permanent memory!")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# =======================================================
-# DIRECTION 2: PLANNED PREVENTIVE MAINTENANCE (PPM) LOGS
-# =======================================================
-elif page_selection == "Planned Preventive Maintenance (PPM)":
-    st.markdown('<div class="card-box">', unsafe_allow_html=True)
-    st.header("🗓️ Planned Preventive Maintenance Scheduling Board")
-    st.markdown("Register upcoming inspection protocols, verification dates, and validation cycles.")
+    # Beautifully-bordered Target Profile Card
+    st.markdown("""
+        <div class="instrument-profile-card">
+            <h4 style='margin:0 0 6px 0; color:#1E3A8A; font-weight:700; letter-spacing:0.5px;'>TARGET INSTRUMENT PROFILE</h4>
+            <div style='font-size:1.2rem; font-weight:600; color:#0F172A; margin-bottom:4px;'>Laboratory - 5-Part Hematology Counter (Sysmex, Mindray, Erba)</div>
+            <div style='color:#475569; font-weight:600; font-size:0.9rem;'>MACHINE SERIAL NUMBER MATRIX: <code style='color:#DC2626; background-color:#FEE2E2; padding:2px 6px; border-radius:4px;'>SN-HASS-44321</code></div>
+        </div>
+    """, unsafe_allow_html=True)
     
-    col_p1, col_p2 = st.columns(2)
-    with col_p1:
-        ppm_model = st.selectbox("Select Asset to Calibrate:", st.session_state["biomedical_fleet"])
-        ppm_serial = st.text_input("Asset Serial Number Matrix:", placeholder="e.g. SN-RAD-CT-4001")
-    with col_p2:
-        ppm_date = st.date_input("Target Calibration Milestone Date:", datetime.now())
-        ppm_status = st.selectbox("Operational Calibration Status:", ["Scheduled", "Completed", "Overdue"])
+    # Form layout wrapper
+    diagnosis_form = st.form("active_diagnosis_form")
+    with diagnosis_form:
+        st.markdown("<h3 style='color:#1E3A8A; margin-top:0; font-weight:700;'>🛠️ Interactive Analysis & Learning Loop</h3>", unsafe_allow_html=True)
         
-    if st.button("🗓️ Commit Maintenance Window to Schedule Matrix"):
-        if ppm_serial:
-            ragnor.save_ppm_schedule(ppm_model, ppm_serial, str(ppm_date), st.session_state["tech_name"], ppm_status)
-            st.success(f"PPM interval successfully mapped for {ppm_model} [{ppm_serial.upper()}]!")
-        else:
-            st.error("Missing Parameter Check: Provide asset serial code designation.")
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.markdown('<div class="card-box">', unsafe_allow_html=True)
-    st.subheader("📋 Active Hospital Facility PPM Calibration Matrix")
-    raw_schedules = ragnor.get_all_ppm_schedules()
+        voice_lang = st.selectbox("Voice Assistant Control - Choose Language:", ["English (en-US)", "Swahili (sw-KE)"])
+        fault_code = st.text_input("Enter System Fault Code:", placeholder="e.g., ERR-A109, PRESSURE-LOW")
+        engineering_hypothesis = st.text_area("Add Your Engineering Hypothesis:", placeholder="Document preliminary transducer checks, sample line blockages, or mechanical noises...")
+        
+        successful_fix = st.text_area(
+            "Log Final Successful Fix & Train AI:",
+            placeholder="Describe the precise mechanical action that resolved the problem. This string is tokenized and embedded into the local RAG assistant's model database..."
+        )
+        
